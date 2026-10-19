@@ -1,0 +1,2752 @@
+<!DOCTYPE html>
+<html lang="en-GB">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Repair Tracker</title>
+  <script>
+    // Set the theme before the page draws, so there is no white flash.
+    // Saved choice wins; otherwise follow the device's dark/light setting.
+    (function () {
+      let theme = "light";
+      try {
+        theme = localStorage.getItem("mh_theme") ||
+          (window.matchMedia && window.matchMedia("(prefers-color-scheme: dark)").matches ? "dark" : "light");
+      } catch (err) { /* storage blocked: use light */ }
+      document.documentElement.setAttribute("data-theme", theme);
+    })();
+  </script>
+  <style>
+    /* =========================================================
+       DESIGN TOKENS - "Workshop" theme
+       Warm cream paper, deep forest green, clay red for Urgent.
+       Every text colour meets WCAG AA (4.5:1) on its background,
+       and form borders meet the 3:1 rule for UI components.
+       ========================================================= */
+    :root {
+      --bg: #f3ead9;          /* cream paper */
+      --surface: #fffaf1;     /* lighter card paper */
+      --surface-2: #f8f0e2;
+      --text: #2a241c;        /* warm near-black */
+      --muted: #5e5345;
+      --line: #e3d6c0;
+      --input-line: #8a7b66;
+      --accent: #1f4d3a;      /* forest green */
+      --accent-dark: #163a2b;
+      --accent-soft: #e3efe7;
+      --focus-ring: rgba(31, 77, 58, 0.30);
+      --focus: #1f4d3a;
+      --link: #1f4d3a;
+      --danger-btn: #a3361f;
+      --hover-line: #cdbb9c;
+      --next-line: #b8d3c2;
+      --header-bg: #1f4d3a;
+      --header-text: #fdf6e8;
+      --header-muted: #d6e5da;
+      --header-mark: #e0a96d; /* brass */
+      --progress-accent: #c2770e;
+      --help-bg: #fbe9cf;     /* warm brass highlight */
+      --help-line: #d29a55;
+
+      --error: #a3361f;
+      --error-soft: #f9e4dc;
+      --success: #2e6b3f;
+      --success-soft: #e5f1e6;
+
+      --urgent: #a3361f;      /* clay red */
+      --urgent-soft: #f9e4dc;
+      --normal: #4a4237;
+      --normal-soft: #ece3d3;
+      --new: #2c5d8a;         /* slate blue */
+      --new-soft: #e4edf4;
+      --progress: #8a5a00;    /* ochre */
+      --progress-soft: #fbf0d9;
+      --done: #2e6b3f;        /* moss green */
+      --done-soft: #e5f1e6;
+      --purple: #7a3e6c;      /* plum */
+      --purple-soft: #f4e6ef;
+
+      --radius: 14px;
+      --radius-sm: 10px;
+      --shadow: 0 1px 2px rgba(60, 40, 10, 0.06), 0 3px 10px rgba(60, 40, 10, 0.06);
+      --heading-font: "Iowan Old Style", "Palatino Linotype", Palatino, "Book Antiqua", Georgia, serif;
+      color-scheme: light;
+    }
+
+    /* ---------- Dark theme: warm "workshop at night" ---------- */
+    :root[data-theme="dark"] {
+      --bg: #1a1713;
+      --surface: #24201a;
+      --surface-2: #2b261f;
+      --text: #f1e9da;
+      --muted: #c2b6a2;
+      --line: #3a342b;
+      --input-line: #85796a;
+      --accent: #2f6b52;
+      --accent-dark: #25583f;
+      --accent-soft: #1f3329;
+      --focus-ring: rgba(143, 209, 176, 0.35);
+      --focus: #8fd1b0;
+      --link: #8fd1b0;
+      --danger-btn: #b5452c;
+      --hover-line: #4d4538;
+      --next-line: #2f6b52;
+      --header-bg: #14251d;
+      --header-text: #f1e9da;
+      --header-muted: #b9cfc1;
+      --header-mark: #e0a96d;
+      --progress-accent: #e3a33b;
+      --help-bg: #3a2c18;
+      --help-line: #c88a3d;
+
+      --error: #f2a48f;
+      --error-soft: #3b1f17;
+      --success: #9ad6a8;
+      --success-soft: #1d3324;
+
+      --urgent: #f2a48f;
+      --urgent-soft: #3b1f17;
+      --normal: #ddd2c0;
+      --normal-soft: #332d25;
+      --new: #9cc3e6;
+      --new-soft: #1c2a37;
+      --progress: #f0c46a;
+      --progress-soft: #3a2c10;
+      --done: #9ad6a8;
+      --done-soft: #1d3324;
+      --purple: #e3b3d6;
+      --purple-soft: #36222f;
+
+      --shadow: 0 1px 2px rgba(0, 0, 0, 0.4), 0 3px 10px rgba(0, 0, 0, 0.3);
+      color-scheme: dark;
+    }
+    :root[data-theme="dark"] .ticket.urgent .ticket-stub { box-shadow: inset 4px 0 0 #d9573a; }
+
+    * { box-sizing: border-box; }
+
+    /* Make sure hidden views stay hidden even when they use grid/flex layouts */
+    [hidden] { display: none !important; }
+
+    body {
+      margin: 0;
+      font-family: "Inter", system-ui, -apple-system, "Segoe UI", Roboto, Arial, sans-serif;
+      font-size: 16px;
+      line-height: 1.55;
+      background: var(--bg);
+      color: var(--text);
+      -webkit-font-smoothing: antialiased;
+    }
+
+    h1, h2, h3 { letter-spacing: -0.015em; }
+
+    /* ---------- Header ---------- */
+    header {
+      background: var(--surface);
+      border-bottom: 1px solid var(--line);
+      padding: 18px 16px;
+    }
+    .header-inner {
+      max-width: 1120px;
+      margin: 0 auto;
+      display: flex;
+      flex-wrap: wrap;
+      align-items: center;
+      justify-content: space-between;
+      gap: 4px 16px;
+    }
+    header h1 {
+      margin: 0;
+      font-size: 1.35rem;
+      display: flex;
+      align-items: center;
+      gap: 10px;
+    }
+    header h1::before {
+      content: "";
+      width: 12px;
+      height: 12px;
+      border-radius: 4px;
+      background: var(--accent);
+    }
+    header p { margin: 0; color: var(--muted); }
+
+    main {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 24px 16px 48px;
+    }
+
+    .panel {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 22px;
+      margin-bottom: 20px;
+    }
+
+    h2 { margin: 0 0 16px; font-size: 1.15rem; }
+    h3 { font-size: 1.05rem; }
+
+    /* ---------- Queue tracker ---------- */
+    .queue-bar {
+      background: transparent;
+      border: none;
+      box-shadow: none;
+      padding: 0;
+    }
+    .queue-bar h2 {
+      font-size: 0.875rem;
+      text-transform: uppercase;
+      letter-spacing: 0.06em;
+      color: var(--muted);
+      margin-bottom: 10px;
+    }
+
+    .tiles {
+      list-style: none;
+      margin: 0;
+      padding: 0;
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 14px;
+    }
+    .tile {
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+      padding: 16px 18px;
+      position: relative;
+    }
+    .tile-label {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      color: var(--muted);
+    }
+    .tile-label::before {
+      content: "";
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--muted);
+      flex-shrink: 0;
+    }
+    .tile.waiting .tile-label::before { background: var(--new); }
+    .tile.progress .tile-label::before { background: var(--progress-accent); }
+    .tile.done .tile-label::before { background: var(--done); }
+    .tile.next .tile-label::before { background: var(--accent); }
+
+    .tile-number {
+      display: block;
+      font-size: 2.2rem;
+      font-weight: 700;
+      line-height: 1.1;
+      letter-spacing: -0.02em;
+      margin-bottom: 4px;
+    }
+    .tile.next { background: var(--accent-soft); border-color: var(--next-line); }
+    .tile-next-id { display: block; font-size: 1.2rem; font-weight: 700; margin-top: 6px; }
+    .tile-next-text { display: block; color: var(--text); }
+
+    /* ---------- Layout: form left, tickets right ---------- */
+    .layout {
+      display: grid;
+      grid-template-columns: 340px 1fr;
+      gap: 20px;
+      align-items: start;
+    }
+    .layout > .panel { margin-bottom: 0; }
+
+    /* ---------- Forms ---------- */
+    .field { margin-bottom: 18px; }
+
+    label, legend {
+      display: block;
+      font-weight: 600;
+      font-size: 0.95rem;
+      margin-bottom: 6px;
+    }
+
+    .hint { color: var(--muted); font-size: 0.9rem; margin: -2px 0 6px; }
+
+    input[type="text"], input[type="tel"], textarea, select {
+      width: 100%;
+      font: inherit;
+      padding: 10px 12px;
+      border: 1.5px solid var(--input-line);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+      transition: border-color 0.15s, box-shadow 0.15s;
+    }
+    input[type="text"]:hover, input[type="tel"]:hover, textarea:hover, select:hover { border-color: var(--text); }
+    textarea { min-height: 96px; resize: vertical; }
+
+    fieldset { border: none; padding: 0; margin: 0 0 20px; }
+
+    /* Priority as two tidy choice "chips" (still real radio buttons) */
+    .radio-row { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .radio-option {
+      display: flex;
+      align-items: center;
+      gap: 10px;
+      padding: 10px 12px;
+      border: 1.5px solid var(--input-line);
+      border-radius: var(--radius-sm);
+      cursor: pointer;
+    }
+    .radio-option:has(input:checked) {
+      border-color: var(--accent);
+      background: var(--accent-soft);
+    }
+    .radio-option label { display: inline; font-weight: 600; margin: 0; cursor: pointer; flex: 1; }
+    input[type="radio"] { width: 18px; height: 18px; margin: 0; accent-color: var(--accent); }
+
+    [aria-invalid="true"] {
+      border-color: var(--error) !important;
+      background: var(--error-soft);
+    }
+
+    .field-error {
+      color: var(--error);
+      font-weight: 600;
+      font-size: 0.92rem;
+      margin: 6px 0 0;
+    }
+    .field-error::before { content: "Error: "; }
+    .field-error:empty { display: none; }
+
+    .fixed-value {
+      padding: 10px 12px;
+      background: var(--surface-2);
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      margin: 0;
+      font-weight: 600;
+    }
+
+    /* ---------- Buttons ---------- */
+    button {
+      font: inherit;
+      font-weight: 600;
+      padding: 10px 18px;
+      border-radius: var(--radius-sm);
+      border: 1.5px solid var(--accent);
+      background: var(--accent);
+      color: #ffffff;
+      cursor: pointer;
+      transition: background 0.15s, border-color 0.15s, box-shadow 0.15s;
+    }
+    button:hover { background: var(--accent-dark); border-color: var(--accent-dark); }
+    button.secondary {
+      background: var(--surface);
+      color: var(--link);
+      border-color: var(--input-line);
+    }
+    button.secondary:hover { background: var(--accent-soft); border-color: var(--accent); }
+    .form-panel button[type="submit"] { width: 100%; padding: 12px 18px; }
+
+    /* Clearly visible keyboard focus on everything */
+    :focus-visible {
+      outline: 2px solid var(--focus);
+      outline-offset: 2px;
+      box-shadow: 0 0 0 4px var(--focus-ring);
+    }
+    input:focus-visible, textarea:focus-visible, select:focus-visible { outline-offset: 0; }
+
+    /* ---------- Messages ---------- */
+    .error-summary {
+      border: 1.5px solid var(--error);
+      border-left-width: 5px;
+      background: var(--error-soft);
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 18px;
+    }
+    .error-summary h3 { margin: 0 0 4px; color: var(--error); font-size: 1rem; }
+    .error-summary ul { margin: 0; padding-left: 20px; }
+
+    .status-message {
+      border: 1.5px solid var(--success);
+      border-left-width: 5px;
+      background: var(--success-soft);
+      color: var(--success);
+      font-weight: 600;
+      padding: 12px 16px;
+      border-radius: var(--radius-sm);
+      margin-bottom: 20px;
+    }
+    .status-message:empty { display: none; }
+    /* Long words in messages (e.g. a 200-character note) wrap instead of widening the page */
+    .status-message, .inline-result, .error-summary, .field-error { overflow-wrap: anywhere; }
+
+    /* Confirmation shown right next to the button that was pressed */
+    .inline-result {
+      margin: 12px 0 0;
+      padding: 10px 12px;
+      border: 1.5px solid var(--success);
+      border-left-width: 5px;
+      border-radius: var(--radius-sm);
+      background: var(--success-soft);
+      color: var(--success);
+      font-weight: 600;
+    }
+
+    /* ---------- Ticket list ---------- */
+    .tickets-header {
+      display: flex;
+      justify-content: space-between;
+      align-items: baseline;
+      flex-wrap: wrap;
+      gap: 4px 12px;
+      margin-bottom: 16px;
+    }
+    .tickets-header h2 { margin: 0; }
+    .tickets-header p { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+    .job-list { list-style: none; padding: 0; margin: 0; display: grid; gap: 12px; }
+
+    .ticket {
+      display: grid;
+      grid-template-columns: 170px 1fr;
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+      overflow: hidden;
+      background: var(--surface);
+      transition: box-shadow 0.15s, border-color 0.15s;
+    }
+    .ticket:hover { box-shadow: var(--shadow); border-color: var(--hover-line); }
+
+    /* Left stub: ticket number + queue place, with a perforated edge */
+    .ticket-stub {
+      padding: 16px;
+      background: var(--surface-2);
+      border-right: 2px dashed var(--line);
+      display: flex;
+      flex-direction: column;
+      gap: 2px;
+      position: relative;
+    }
+    .ticket.urgent .ticket-stub {
+      background: var(--urgent-soft);
+      box-shadow: inset 4px 0 0 var(--urgent);
+    }
+    .ticket-id {
+      font-size: 0.95rem;
+      font-weight: 700;
+      letter-spacing: 0.04em;
+      color: var(--muted);
+      margin: 0 0 6px;
+    }
+    .queue-place { font-weight: 700; font-size: 1.05rem; margin: 0; line-height: 1.3; }
+    .queue-detail { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+    .ticket-body { padding: 16px 18px; min-width: 0; }
+    .ticket-body h3 { margin: 0 0 10px; font-size: 1.05rem; }
+
+    .badges { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 12px; }
+
+    .badge {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 3px 10px;
+      border-radius: 999px;
+      font-weight: 600;
+      font-size: 0.875rem;
+      border: 1px solid transparent;
+    }
+    .badge::before {
+      content: "";
+      width: 6px;
+      height: 6px;
+      border-radius: 50%;
+      background: currentColor;
+    }
+    .badge.priority-urgent { background: var(--urgent-soft); color: var(--urgent); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+    .badge.priority-normal { background: var(--normal-soft); color: var(--normal); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+    .badge.status-new { background: var(--new-soft); color: var(--new); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+    .badge.status-progress { background: var(--progress-soft); color: var(--progress); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+    .badge.status-done { background: var(--done-soft); color: var(--done); border-color: color-mix(in srgb, currentColor 35%, transparent); }
+
+    dl.details {
+      display: grid;
+      grid-template-columns: max-content 1fr;
+      gap: 4px 16px;
+      margin: 0 0 14px;
+      font-size: 0.95rem;
+    }
+    dl.details dt { color: var(--muted); }
+    dl.details dd { margin: 0; min-width: 0; font-weight: 500; }
+
+    /* User-typed text: keep line breaks, wrap very long words */
+    .user-text {
+      white-space: pre-wrap;
+      overflow-wrap: anywhere;
+    }
+
+    .empty {
+      color: var(--muted);
+      text-align: center;
+      padding: 32px 16px;
+      border: 1.5px dashed var(--line);
+      border-radius: var(--radius);
+      margin: 0;
+    }
+
+    /* ---------- Detail view ---------- */
+    #back-button { margin-bottom: 4px; }
+
+    .detail-layout {
+      display: grid;
+      grid-template-columns: 1fr 360px;
+      gap: 20px;
+      align-items: start;
+    }
+    .detail-layout > .panel { margin-bottom: 0; }
+    #detail-heading { font-size: 1.4rem; margin-bottom: 10px; }
+
+    /* History as a simple vertical timeline */
+    .history {
+      list-style: none;
+      padding: 0;
+      margin: 0;
+      border-left: 2px solid var(--line);
+      margin-left: 6px;
+    }
+    .history li {
+      position: relative;
+      padding: 0 0 18px 20px;
+    }
+    .history li::before {
+      content: "";
+      position: absolute;
+      left: -7px;
+      top: 6px;
+      width: 12px;
+      height: 12px;
+      border-radius: 50%;
+      background: var(--surface);
+      border: 2px solid var(--accent);
+    }
+    .history li:last-child { padding-bottom: 0; }
+    .history li:last-child::before { background: var(--accent); }
+    .history-meta { font-weight: 600; margin: 0; font-size: 0.95rem; }
+    .history-priority { margin: 2px 0 0; font-weight: 600; color: var(--urgent); }
+    .history li p:last-child { margin: 2px 0 0; color: var(--text); }
+
+    /* ---------- Side columns (stack panels with a gap) ---------- */
+    .side-col { display: grid; gap: 20px; align-content: start; min-width: 0; }
+    .side-col > .panel { margin-bottom: 0; }
+
+    /* ---------- Get help / contractor directory ---------- */
+    .help-intro { margin: -6px 0 14px; color: var(--muted); }
+
+    .emergency {
+      border: 1.5px solid var(--error);
+      border-left-width: 5px;
+      background: var(--error-soft);
+      border-radius: var(--radius-sm);
+      padding: 12px 14px;
+      margin-bottom: 14px;
+    }
+    .emergency-title { margin: 0 0 4px; font-weight: 700; color: var(--error); }
+    .emergency p { margin: 0 0 8px; }
+
+    .trade {
+      border: 1px solid var(--line);
+      border-radius: var(--radius-sm);
+      padding: 14px;
+      margin-bottom: 12px;
+      background: var(--surface);
+    }
+    .trade h3, .trade h4 { margin: 0; font-size: 1.05rem; }
+    .trade .hint { margin: 2px 0 8px; }
+
+    .contractors { list-style: none; padding: 0; margin: 0 0 10px; }
+    .contractor {
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px 12px;
+      padding: 10px 0;
+      border-top: 1px solid var(--line);
+    }
+    .contractor-name { margin: 0; font-weight: 600; }
+    .contractor-note { margin: 0; color: var(--muted); font-size: 0.9rem; }
+
+    .call-link {
+      display: inline-block;
+      padding: 7px 14px;
+      border-radius: var(--radius-sm);
+      background: var(--accent);
+      color: #ffffff;
+      font-weight: 600;
+      text-decoration: none;
+      white-space: nowrap;
+    }
+    .call-link:hover { background: var(--accent-dark); }
+    .emergency .call-link { background: var(--danger-btn); }
+    .emergency .call-link:hover { filter: brightness(0.9); }
+
+    .search-link { color: var(--link); font-weight: 600; }
+
+    details > summary {
+      cursor: pointer;
+      font-weight: 700;
+      font-size: 1.05rem;
+      padding: 2px 0;
+    }
+    details[open] > summary { margin-bottom: 14px; }
+    .directory > summary { font-size: 1.15rem; }
+    .fictional-note { color: var(--muted); font-size: 0.875rem; margin: 8px 0 0; }
+
+    /* =========================================================
+       "WORKSHOP" THEME DETAILS
+       ========================================================= */
+    /* Dotted paper background, like a notebook / job pad */
+    body {
+      background-color: var(--bg);
+      background-image: radial-gradient(var(--dots, rgba(120, 90, 40, 0.10)) 1px, transparent 1.2px);
+      background-size: 18px 18px;
+    }
+    :root[data-theme="dark"] body { --dots: rgba(255, 240, 210, 0.05); }
+
+    /* Forest-green header with a brass strip */
+    header {
+      background: var(--header-bg);
+      border-bottom: 4px solid var(--header-mark);
+      padding: 20px 16px;
+    }
+    header h1 {
+      color: var(--header-text);
+      font-family: var(--heading-font);
+      font-size: 1.7rem;
+      letter-spacing: 0;
+    }
+    header h1::before {
+      width: 14px;
+      height: 14px;
+      border-radius: 3px;
+      background: var(--header-mark);
+      transform: rotate(45deg);  /* small brass diamond */
+    }
+    header p { color: var(--header-muted); }
+    header button.theme-toggle {
+      background: transparent;
+      color: var(--header-text);
+      border-color: var(--header-muted);
+    }
+    header button.theme-toggle:hover { background: rgba(255, 255, 255, 0.12); border-color: var(--header-text); color: var(--header-text); }
+    header :focus-visible { outline-color: var(--header-mark); box-shadow: none; }
+
+    /* Serif headings give the app its own character */
+    h2, h3, #detail-heading, .tile-number, .tile-next-id, .print-title {
+      font-family: var(--heading-font);
+      letter-spacing: 0;
+    }
+    .queue-bar h2 { font-family: inherit; }
+
+    /* Panels feel like cards of paper */
+    .panel, .tile, .stats { box-shadow: var(--shadow); }
+    /* the queue tracker is a layout wrapper, not a card */
+    section.panel.queue-bar { background: transparent; border: none; box-shadow: none; padding: 0; }
+    .ticket { box-shadow: 0 1px 0 var(--line); }
+    .ticket-stub { background: var(--surface-2); }
+
+    /* ---------- Skip link (appears when you press Tab first) ---------- */
+    .skip-link {
+      position: absolute;
+      left: 16px;
+      top: -60px;
+      z-index: 10;
+      background: var(--accent);
+      color: #ffffff;
+      padding: 10px 16px;
+      border-radius: var(--radius-sm);
+      font-weight: 600;
+      text-decoration: none;
+    }
+    .skip-link:focus { top: 12px; }
+
+    /* Text only screen readers hear */
+    .visually-hidden {
+      position: absolute !important;
+      width: 1px; height: 1px;
+      padding: 0; margin: -1px;
+      overflow: hidden;
+      clip: rect(0, 0, 0, 0);
+      white-space: nowrap;
+      border: 0;
+    }
+
+    /* ---------- Header actions ---------- */
+    .header-actions { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+    .theme-toggle { padding: 7px 14px; font-size: 0.95rem; }
+
+    /* ---------- Toolbar: search + filters ---------- */
+    .toolbar { display: grid; gap: 12px; margin-bottom: 16px; }
+    .search-field label { margin-bottom: 6px; }
+    input[type="search"] {
+      width: 100%;
+      font: inherit;
+      padding: 10px 12px;
+      border: 1.5px solid var(--input-line);
+      border-radius: var(--radius-sm);
+      background: var(--surface);
+      color: var(--text);
+    }
+    .filters { display: flex; flex-wrap: wrap; gap: 8px; }
+    .filter-btn {
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 0.92rem;
+      background: var(--surface);
+      color: var(--text);
+      border: 1.5px solid var(--input-line);
+    }
+    .filter-btn:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+    .filter-btn[aria-pressed="true"] {
+      background: var(--accent);
+      border-color: var(--accent);
+      color: #ffffff;
+    }
+    .filter-btn[aria-pressed="true"]::before { content: "✓ "; }
+    .result-count { margin: 0; color: var(--muted); font-size: 0.92rem; }
+
+    /* ---------- Elapsed time line on tickets ---------- */
+    .elapsed { margin: 6px 0 0; font-size: 0.88rem; color: var(--muted); }
+    .elapsed::before { content: "⏱ "; }
+
+    /* ---------- Progress stepper on the ticket page ---------- */
+    .stepper {
+      list-style: none;
+      padding: 0;
+      margin: 4px 0 18px;
+      display: grid;
+      grid-template-columns: repeat(3, 1fr);
+      gap: 6px;
+      counter-reset: step;
+    }
+    .stepper li {
+      counter-increment: step;
+      position: relative;
+      padding: 10px 10px 10px 42px;
+      border-radius: var(--radius-sm);
+      background: var(--surface-2);
+      border: 1.5px solid var(--line);
+      font-weight: 600;
+      color: var(--muted);
+      font-size: 0.95rem;
+    }
+    .stepper li::before {
+      content: counter(step);
+      position: absolute;
+      left: 10px;
+      top: 50%;
+      transform: translateY(-50%);
+      width: 24px;
+      height: 24px;
+      border-radius: 50%;
+      display: grid;
+      place-items: center;
+      font-size: 0.875rem;
+      border: 1.5px solid var(--input-line);
+      background: var(--surface);
+      color: var(--text);
+    }
+    .stepper li.done { color: var(--text); border-color: var(--done); }
+    .stepper li.done::before { content: "✓"; background: var(--done); border-color: var(--done); color: var(--surface); }
+    .stepper li.current { color: var(--text); border-width: 2px; }
+    .stepper li.current::before { color: var(--surface); }
+    /* Each step has its own colour: Reported = blue, In progress = amber, Completed = green */
+    .stepper li.current.s0 { border-color: var(--new); background: var(--new-soft); }
+    .stepper li.current.s0::before { background: var(--new); border-color: var(--new); }
+    .stepper li.current.s1 { border-color: var(--progress); background: var(--progress-soft); }
+    .stepper li.current.s1::before { background: var(--progress); border-color: var(--progress); }
+    .stepper li.done { background: var(--done-soft); }
+
+    /* ---------- Coloured top edge on the ticket card ---------- */
+    .ticket-panel { border-top-width: 6px; }
+    .tone-top-new { border-top-color: var(--new); }
+    .tone-top-progress { border-top-color: var(--progress-accent); }
+    .tone-top-done { border-top-color: var(--done); }
+
+    /* ---------- Coloured info tiles ---------- */
+    .info-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
+      gap: 10px;
+      margin: 0 0 20px;
+    }
+    .info-item {
+      border-radius: var(--radius-sm);
+      padding: 10px 12px;
+      border: 1px solid transparent;
+      border-left: 4px solid currentColor;
+      min-width: 0;
+    }
+    .info-item.wide { grid-column: 1 / -1; }
+    .info-item dt {
+      font-size: 0.875rem;
+      font-weight: 700;
+      text-transform: uppercase;
+      letter-spacing: 0.05em;
+      margin-bottom: 2px;
+    }
+    .info-item dd { margin: 0; color: var(--text); font-weight: 600; }
+    .info-item dd.elapsed { font-size: 1rem; color: var(--text); }
+    .tone-blue   { background: var(--new-soft);      color: var(--new); }
+    .tone-amber  { background: var(--progress-soft); color: var(--progress); }
+    .tone-green  { background: var(--done-soft);     color: var(--done); }
+    .tone-red    { background: var(--urgent-soft);   color: var(--urgent); }
+    .tone-purple { background: var(--purple-soft);   color: var(--purple); }
+    .tone-grey   { background: var(--normal-soft);   color: var(--normal); }
+
+    /* ---------- History dots coloured by status ---------- */
+    .history li.h-new::before { border-color: var(--new); }
+    .history li.h-progress::before { border-color: var(--progress-accent); }
+    .history li.h-done::before { border-color: var(--done); }
+    .history li.h-new:last-child::before { background: var(--new); }
+    .history li.h-progress:last-child::before { background: var(--progress-accent); }
+    .history li.h-done:last-child::before { background: var(--done); }
+    .step-state { display: block; font-weight: 400; font-size: 0.875rem; color: var(--muted); }
+
+    /* ---------- Footer ---------- */
+    footer {
+      max-width: 1120px;
+      margin: 0 auto;
+      padding: 0 16px 40px;
+      display: flex;
+      flex-wrap: wrap;
+      justify-content: space-between;
+      align-items: center;
+      gap: 12px;
+      color: var(--muted);
+      font-size: 0.9rem;
+    }
+    footer p { margin: 0; }
+    .danger-outline {
+      background: var(--surface);
+      color: var(--error);
+      border-color: var(--error);
+      padding: 7px 14px;
+      font-size: 0.92rem;
+    }
+    .danger-outline:hover { background: var(--error-soft); border-color: var(--error); }
+
+    /* ---------- Overdue badge + stats ---------- */
+    .badge.overdue { background: var(--danger-btn); color: #ffffff; border-color: var(--danger-btn); }
+    .stats {
+      list-style: none;
+      margin: 12px 0 0;
+      padding: 12px 16px;
+      display: flex;
+      flex-wrap: wrap;
+      gap: 6px 28px;
+      background: var(--surface);
+      border: 1px solid var(--line);
+      border-radius: var(--radius);
+    }
+    .stats strong { font-weight: 700; }
+    .stats-hint { color: var(--muted); font-size: 0.9rem; }
+
+    /* ---------- Print job sheet ---------- */
+    .detail-actions { display: flex; flex-wrap: wrap; gap: 10px; }
+    .print-only { display: none; }
+
+    @media print {
+      /* Always print in light colours, whatever the screen theme */
+      :root, :root[data-theme="dark"] {
+        --bg: #ffffff; --surface: #ffffff; --surface-2: #ffffff; --text: #000000;
+        --muted: #333333; --line: #999999;
+        --new: #000000; --new-soft: #ffffff; --progress: #000000; --progress-soft: #ffffff;
+        --done: #000000; --done-soft: #ffffff; --urgent: #000000; --urgent-soft: #ffffff;
+        --normal: #000000; --normal-soft: #ffffff; --purple: #000000; --purple-soft: #ffffff;
+        --shadow: none;
+      }
+      body { background: #ffffff; font-size: 12pt; }
+      header, footer, .skip-link, .queue-bar, .detail-actions, .status-message,
+      .stepper, .detail-layout > .side-col { display: none !important; }
+      main { padding: 0; max-width: none; }
+      .detail-layout { display: block; }
+      .panel, .info-item { border-color: #999999 !important; box-shadow: none; }
+      .ticket-panel { border-top-width: 1px; }
+      .print-only { display: block; }
+      .print-title { font-size: 11pt; text-transform: uppercase; letter-spacing: 0.08em; margin: 0 0 4px; }
+      .badge.overdue { background: #ffffff; color: #000000; border-color: #000000; }
+      .info-grid { grid-template-columns: repeat(2, 1fr); }
+      .history li { break-inside: avoid; }
+    }
+
+    /* ---------- Booking + sort ---------- */
+    .contractor-actions { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; }
+    .book-btn { padding: 6px 14px; }
+    .booked { color: var(--success); font-weight: 700; }
+    .history-booking { margin: 2px 0 0; font-weight: 600; color: var(--done); }
+    .toolbar { grid-template-columns: minmax(0, 1fr); }
+    .sort-field select { max-width: 260px; }
+
+    /* ---------- Urgency suggestion ---------- */
+    .urgency-hint:empty { display: none; }
+    .urgency-hint {
+      margin: -6px 0 18px;
+      padding: 10px 12px;
+      border-radius: var(--radius-sm);
+      border: 1.5px solid currentColor;
+      border-left-width: 5px;
+      font-weight: 600;
+    }
+    .urgency-hint p { margin: 0 0 8px; }
+    .urgency-hint p:last-child { margin-bottom: 0; }
+    .urgency-hint.suggest { background: var(--urgent-soft); color: var(--urgent); }
+    .urgency-hint.is-urgent { background: var(--done-soft); color: var(--done); }
+    .urgency-hint button { margin-bottom: 4px; }
+    .urgency-safety .call-link { background: var(--danger-btn); margin-left: 4px; }
+
+    /* ---------- Find help: header button + highlighted banner ---------- */
+    header button.find-help-btn {
+      background: var(--header-mark);
+      border-color: var(--header-mark);
+      color: #2a241c;
+      padding: 8px 16px;
+    }
+    header button.find-help-btn:hover { background: #ecbf8c; border-color: #ecbf8c; color: #2a241c; }
+
+    .find-help {
+      grid-column: 1 / -1;          /* spans both columns of the main layout */
+      background: var(--help-bg);
+      border: 2px solid var(--help-line);
+      border-left-width: 8px;
+      border-radius: var(--radius);
+      box-shadow: var(--shadow);
+    }
+    .find-help > summary {
+      list-style: none;
+      display: grid;
+      grid-template-columns: auto 1fr auto;
+      align-items: center;
+      gap: 4px 14px;
+      padding: 16px 20px;
+      cursor: pointer;
+      margin: 0;
+    }
+    .find-help > summary::-webkit-details-marker { display: none; }
+    /* "Open/close" marker drawn as a + / − in a circle */
+    .find-help > summary::before {
+      content: "+";
+      grid-row: 1 / span 2;
+      width: 34px; height: 34px;
+      border-radius: 50%;
+      display: grid; place-items: center;
+      background: var(--help-line);
+      color: #2a241c;
+      font-size: 1.3rem; font-weight: 700;
+    }
+    .find-help[open] > summary::before { content: "−"; }
+    .find-help-title {
+      font-family: var(--heading-font);
+      font-size: 1.35rem;
+      font-weight: 700;
+      color: var(--text);
+    }
+    .find-help-sub { grid-column: 2; color: var(--muted); font-weight: 400; font-size: 0.95rem; }
+    .find-help[open] > summary { border-bottom: 1px dashed var(--help-line); margin-bottom: 0; }
+    .find-help-body { padding: 16px 20px 18px; }
+    .directory-grid {
+      display: grid;
+      grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+      gap: 12px;
+    }
+    .directory-grid .trade { margin-bottom: 0; }
+    .emergency-strip {
+      border: 1.5px solid var(--error);
+      border-left-width: 5px;
+      background: var(--error-soft);
+      border-radius: var(--radius-sm);
+      padding: 10px 14px;
+      margin-bottom: 14px;
+    }
+    .emergency-strip p { margin: 0; line-height: 2.4; }
+    .emergency-strip .call-link { background: var(--danger-btn); margin-right: 10px; }
+
+    /* ---------- Floor plan (room picker + home map) ---------- */
+    .floorplan {
+      display: grid;
+      grid-template-columns: repeat(3, minmax(0, 1fr));
+      grid-template-areas:
+        "b1 b2 bath"
+        "lounge hall kitchen"
+        "garden garden outside";
+      gap: 4px;
+      padding: 6px;
+      border: 3px solid var(--text);       /* the outside walls */
+      border-radius: 6px;
+      background: var(--line);
+    }
+    .room-btn {
+      min-height: 52px;
+      padding: 6px 6px;
+      border-radius: 3px;
+      border: 1.5px solid var(--input-line);
+      background: var(--surface);
+      color: var(--text);
+      font-size: 0.875rem;
+      font-weight: 600;
+      line-height: 1.25;
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+      text-align: center;
+      overflow-wrap: break-word;   /* wrap between words, not mid-word */
+    }
+    .room-btn:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--text); }
+    .room-btn[aria-pressed="true"] { background: var(--accent); border-color: var(--accent); color: #ffffff; }
+    .room-btn[aria-pressed="true"]::before { content: "✓ "; }
+    /* garden and outside look like grass/outdoors */
+    .room-btn[style*="garden"], .room-btn[style*="outside"] { border-style: dashed; }
+    .room-field { margin-bottom: 18px; }
+    .room-field .hint { margin-top: 0; }
+
+    .home-map .hint { margin-top: -8px; }
+    .room-name { display: block; }
+    .room-count { display: block; font-weight: 400; font-size: 0.875rem; color: var(--muted); }
+    .room-btn.has-faults { background: var(--progress-soft); border-color: var(--progress); }
+    .room-btn.has-faults .room-count { color: var(--progress); font-weight: 700; }
+    .room-btn.has-urgent { background: var(--urgent-soft); border-color: var(--urgent); border-width: 2.5px; }
+    .room-btn.has-urgent .room-count { color: var(--urgent); }
+    .room-btn[aria-pressed="true"] .room-count { color: #ffffff; }
+
+    /* ---------- Estimated wait on job cards ---------- */
+    .estimate { margin: 6px 0 0; font-size: 0.875rem; font-weight: 600; color: var(--new); }
+
+    /* ---------- Header "Report a fault" button ---------- */
+    header button.report-jump-btn {
+      background: var(--header-text);
+      border-color: var(--header-text);
+      color: var(--accent-dark);
+      padding: 8px 16px;
+    }
+    header button.report-jump-btn:hover { background: #ffffff; border-color: #ffffff; color: var(--accent-dark); }
+    :root[data-theme="dark"] header button.report-jump-btn { color: #14251d; }
+
+    /* ---------- Right column: home map + recent activity ---------- */
+    .main-col { gap: 20px; }
+    .map-activity { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 20px; align-items: start; }
+    .map-activity > .panel { margin-bottom: 0; }
+    .activity-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 8px; }
+    .activity-item {
+      border-left: 4px solid var(--new);
+      background: var(--surface-2);
+      border-radius: var(--radius-sm);
+      padding: 8px 12px;
+    }
+    .activity-item.a-progress { border-left-color: var(--progress-accent); }
+    .activity-item.a-done { border-left-color: var(--done); }
+    .activity-item.a-booking { border-left-color: var(--purple); }
+    .activity-item p { margin: 0; }
+    .activity-top { display: flex; justify-content: space-between; align-items: center; gap: 8px; flex-wrap: wrap; }
+    .activity-job {
+      padding: 2px 10px;
+      font-size: 0.875rem;
+      border-radius: 999px;
+      background: var(--accent-soft);
+      color: var(--link);
+      border: 1.5px solid var(--accent);
+      width: auto !important;
+    }
+    .activity-job:hover { background: var(--accent); color: #ffffff; }
+    .activity-time { color: var(--muted); font-size: 0.875rem; }
+    .activity-desc { font-weight: 600; margin-top: 4px !important; }
+    .activity-what { color: var(--muted); }
+    @media (max-width: 1100px) { .map-activity { grid-template-columns: minmax(0, 1fr); } }
+
+    /* ---------- Dropdowns look the same in every browser (Safari ignores padding otherwise) ---------- */
+    select {
+      -webkit-appearance: none;
+      appearance: none;
+      min-height: 44px;
+      padding-right: 40px !important;
+      background-image: linear-gradient(45deg, transparent 50%, var(--text) 50%),
+                        linear-gradient(135deg, var(--text) 50%, transparent 50%);
+      background-position: calc(100% - 20px) 50%, calc(100% - 14px) 50%;
+      background-size: 6px 6px, 6px 6px;
+      background-repeat: no-repeat;
+    }
+
+    /* ---------- Quick-pick fault chips ---------- */
+    .quick-picks { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 4px 0 8px; }
+    .quick-label { color: var(--muted); font-size: 0.9rem; margin-right: 2px; }
+    .chip {
+      padding: 5px 12px;
+      border-radius: 999px;
+      font-size: 0.9rem;
+      font-weight: 600;
+      background: var(--accent-soft);
+      color: var(--link);
+      border: 1.5px solid var(--accent-soft);
+    }
+    .chip:hover { background: var(--accent-soft); border-color: var(--accent); color: var(--link); }
+
+    /* ---------- Responsive ---------- */
+    .layout > *, .detail-layout > *, .side-col > * { min-width: 0; }
+
+    @media (max-width: 920px) {
+      .layout, .detail-layout { grid-template-columns: minmax(0, 1fr); }
+      .form-panel { position: static; }
+      .tiles { grid-template-columns: repeat(2, 1fr); }
+    }
+    @media (max-width: 560px) {
+      .panel { padding: 18px; }
+      .stepper { grid-template-columns: 1fr; }
+      .info-grid { grid-template-columns: minmax(0, 1fr); }
+      .ticket { grid-template-columns: 1fr; }
+      .ticket-stub {
+        border-right: none;
+        border-bottom: 2px dashed var(--line);
+        flex-direction: row;
+        flex-wrap: wrap;
+        align-items: baseline;
+        gap: 4px 10px;
+      }
+      .ticket-id { margin: 0; }
+      dl.details { grid-template-columns: 1fr; gap: 0; }
+      dl.details dd { margin-bottom: 8px; }
+      button { width: 100%; }
+    }
+  </style>
+</head>
+<body>
+  <a href="#main" class="skip-link" id="skip-link">Skip to main content</a>
+
+  <header>
+    <div class="header-inner">
+      <h1>Repair Tracker</h1>
+      <div class="header-actions">
+        <p>Report, track and complete repairs</p>
+        <button type="button" id="report-jump" class="report-jump-btn">Report a fault</button>
+        <button type="button" id="find-help-button" class="find-help-btn">Find help</button>
+        <button type="button" id="theme-toggle" class="secondary theme-toggle">Switch to dark mode</button>
+      </div>
+    </div>
+  </header>
+
+  <main id="main" tabindex="-1">
+    <!-- Success messages are announced to screen readers -->
+    <div id="status-message" class="status-message" role="status" aria-live="polite"></div>
+
+    <!-- ===================== QUEUE TRACKER (always visible) ===================== -->
+    <section class="panel queue-bar" aria-labelledby="queue-heading">
+      <h2 id="queue-heading">Queue tracker</h2>
+      <ul class="tiles">
+        <li class="tile waiting">
+          <span class="tile-number" id="count-waiting">0</span>
+          <span class="tile-label">New (waiting in queue)</span>
+        </li>
+        <li class="tile progress">
+          <span class="tile-number" id="count-progress">0</span>
+          <span class="tile-label">In Progress</span>
+        </li>
+        <li class="tile done">
+          <span class="tile-number" id="count-done">0</span>
+          <span class="tile-label">Completed</span>
+        </li>
+        <li class="tile next">
+          <span class="tile-label">Next in queue</span>
+          <span class="tile-next-id" id="next-id">None</span>
+          <span class="tile-next-text user-text" id="next-text">The queue is empty.</span>
+        </li>
+      </ul>
+      <ul class="stats">
+        <li>Overdue jobs: <strong id="count-overdue">0</strong>
+          <span class="stats-hint">(Urgent waiting over 1 hour, Normal over 3 days)</span></li>
+        <li>Average time to complete: <strong id="avg-time">No completed jobs yet</strong></li>
+      </ul>
+    </section>
+
+    <!-- ===================== LIST VIEW ===================== -->
+    <div id="list-view" class="layout">
+      <!-- Find help: highlighted, full width, at the top of the main screen -->
+      <details class="find-help" id="find-help">
+        <summary>
+          <span class="find-help-title">Find help now</span>
+          <span class="find-help-sub">Plumbers, carpenters, electricians, glaziers, roofers and handypeople, with emergency numbers.</span>
+        </summary>
+        <div class="find-help-body">
+          <div class="emergency-strip">
+            <p><strong>Emergency?</strong> Gas smell: <a class="call-link" href="tel:0800111999">Call 0800 111 999</a>
+               Power cut: <a class="call-link" href="tel:105">Call 105</a>
+               Fire or danger to life: <a class="call-link" href="tel:999">Call 999</a></p>
+          </div>
+          <div id="directory" class="directory-grid"></div>
+          <p class="fictional-note">Contractors and phone numbers are fictional demo data. Emergency numbers are real UK numbers.</p>
+        </div>
+      </details>
+
+      <div class="side-col">
+      <section class="panel form-panel" aria-labelledby="report-heading">
+        <h2 id="report-heading">Report a fault</h2>
+
+        <div id="report-errors" class="error-summary" role="alert" tabindex="-1" hidden></div>
+
+        <form id="report-form" novalidate>
+          <div class="field">
+            <label for="home">Home or address (required)</label>
+            <p class="hint" id="home-hint">Starts as Meadow House. Change it if the fault is somewhere else.</p>
+            <input type="text" id="home" name="home" value="Meadow House" autocomplete="street-address"
+                   aria-describedby="home-hint home-error">
+            <p class="field-error" id="home-error"></p>
+          </div>
+
+          <div class="field">
+            <label for="postcode">Postcode (optional)</label>
+            <p class="hint" id="postcode-hint">Used to find tradespeople near you, for example M1 1AE.</p>
+            <input type="text" id="postcode" name="postcode" autocomplete="postal-code"
+                   maxlength="10" aria-describedby="postcode-hint postcode-error">
+            <p class="field-error" id="postcode-error"></p>
+          </div>
+
+          <div class="field">
+            <label for="description">Fault description (required)</label>
+            <p class="hint" id="description-hint">For example: Garden fence damaged</p>
+            <div class="quick-picks" role="group" aria-label="Quick pick a fault type">
+              <span class="quick-label" aria-hidden="true">Quick pick:</span>
+              <button type="button" class="chip" data-text="Garden fence damaged">Fence</button>
+              <button type="button" class="chip" data-text="Water leak">Leak</button>
+              <button type="button" class="chip" data-text="Light not working">Lighting</button>
+              <button type="button" class="chip" data-text="Door or lock broken">Door / lock</button>
+              <button type="button" class="chip" data-text="Window or glass broken">Window</button>
+              <button type="button" class="chip" data-text="Heating or boiler fault">Heating</button>
+              <button type="button" class="chip" data-text="Roof or gutter damaged">Roof</button>
+            </div>
+            <textarea id="description" name="description"
+                      aria-describedby="description-hint description-error"></textarea>
+            <p class="field-error" id="description-error"></p>
+          </div>
+
+          <fieldset class="room-field">
+            <legend>Room (optional)</legend>
+            <p class="hint" id="room-hint">Tap where the fault is. Tap again to clear.</p>
+            <div class="floorplan" id="room-picker" role="group" aria-describedby="room-hint"></div>
+          </fieldset>
+
+          <div class="field">
+            <label for="reporter">Reporter name (required)</label>
+            <input type="text" id="reporter" name="reporter" autocomplete="name"
+                   aria-describedby="reporter-error">
+            <p class="field-error" id="reporter-error"></p>
+          </div>
+
+          <div class="field">
+            <label for="phone">Phone number (optional)</label>
+            <p class="hint" id="phone-hint">Add it if you'd like a call back about this repair.</p>
+            <input type="tel" id="phone" name="phone" autocomplete="tel" inputmode="tel"
+                   maxlength="20" aria-describedby="phone-hint phone-error">
+            <p class="field-error" id="phone-error"></p>
+          </div>
+
+          <fieldset>
+            <legend>Priority</legend>
+            <p class="hint">Urgent jobs move ahead of Normal jobs in the queue.</p>
+            <div class="radio-row">
+              <div class="radio-option">
+                <input type="radio" id="priority-normal" name="priority" value="Normal" checked>
+                <label for="priority-normal">Normal</label>
+              </div>
+              <div class="radio-option">
+                <input type="radio" id="priority-urgent" name="priority" value="Urgent">
+                <label for="priority-urgent">Urgent</label>
+              </div>
+            </div>
+          </fieldset>
+
+          <!-- Filled in as you type: suggests Urgent when the fault sounds urgent -->
+          <div id="urgency-hint" class="urgency-hint" aria-live="polite"></div>
+
+          <button type="submit">Report fault</button>
+          <p id="report-result" class="inline-result" hidden></p>
+        </form>
+      </section>
+
+      </div>
+
+      <div class="side-col main-col">
+      <section class="panel" aria-labelledby="jobs-heading">
+        <div class="tickets-header">
+          <h2 id="jobs-heading" tabindex="-1">Repair jobs (<span id="ticket-total">0</span>)</h2>
+          <p>In Progress first, then New (waiting), then Completed.</p>
+        </div>
+
+        <div class="toolbar">
+          <div class="sort-field">
+            <label for="sort-select">Sort by</label>
+            <select id="sort-select">
+              <option value="queue">Queue order</option>
+              <option value="newest">Newest first</option>
+              <option value="oldest">Oldest first</option>
+              <option value="urgent">Urgent first</option>
+            </select>
+          </div>
+          <div class="search-field">
+            <label for="search">Search jobs</label>
+            <input type="search" id="search" placeholder="Description, reporter or job ID" autocomplete="off">
+          </div>
+          <div class="filters" role="group" aria-label="Filter jobs by status">
+            <button type="button" class="filter-btn" data-filter="All" aria-pressed="true">All</button>
+            <button type="button" class="filter-btn" data-filter="New" aria-pressed="false">New</button>
+            <button type="button" class="filter-btn" data-filter="In Progress" aria-pressed="false">In Progress</button>
+            <button type="button" class="filter-btn" data-filter="Completed" aria-pressed="false">Completed</button>
+            <button type="button" class="filter-btn" data-filter="Urgent" aria-pressed="false">Urgent only</button>
+          </div>
+          <p class="result-count" id="result-count" aria-live="polite"></p>
+        </div>
+
+        <p id="no-jobs" class="empty">No faults reported yet.</p>
+        <p id="no-matches" class="empty" hidden>No jobs match your search or filter.</p>
+        <ul id="job-list" class="job-list"></ul>
+      </section>
+
+      <div class="map-activity">
+      <!-- Home map: open faults per room; selecting a room filters the job list -->
+      <section class="panel home-map" aria-labelledby="map-heading">
+        <h2 id="map-heading">Home map</h2>
+        <p class="hint">Open faults by room. Select a room to show only its jobs.</p>
+        <div class="floorplan" id="room-map" role="group" aria-label="Filter jobs by room"></div>
+      </section>
+
+      <!-- Recent activity: the latest events across every job -->
+      <section class="panel activity" aria-labelledby="activity-heading">
+        <h2 id="activity-heading">Recent activity</h2>
+        <p id="no-activity" class="hint">Nothing yet. Reports and updates will appear here.</p>
+        <ol id="activity-list" class="activity-list"></ol>
+      </section>
+      </div>
+      </div>
+    </div>
+
+    <!-- ===================== DETAIL VIEW ===================== -->
+    <div id="detail-view" hidden>
+      <p class="detail-actions">
+        <button type="button" id="back-button" class="secondary">Back to all jobs</button>
+        <button type="button" id="print-button" class="secondary">Print job sheet</button>
+      </p>
+
+      <div class="detail-layout">
+        <section class="panel ticket-panel" id="detail-panel" aria-labelledby="detail-heading">
+          <p class="print-only print-title">Repair job sheet</p>
+          <h2 id="detail-heading" tabindex="-1"></h2>
+          <div id="detail-badges" class="badges"></div>
+          <ol id="stepper" class="stepper" aria-label="Repair progress"></ol>
+          <dl id="detail-fields" class="info-grid"></dl>
+
+          <h3>Status history</h3>
+          <ol id="history-list" class="history"></ol>
+        </section>
+
+        <div class="side-col">
+        <section class="panel" aria-labelledby="update-heading">
+          <h2 id="update-heading">Update this job</h2>
+
+          <div id="update-errors" class="error-summary" role="alert" tabindex="-1" hidden></div>
+
+          <form id="update-form" novalidate>
+            <div class="field">
+              <label for="status-select">Status</label>
+              <select id="status-select" name="status">
+                <option value="New">New</option>
+                <option value="In Progress">In Progress</option>
+                <option value="Completed">Completed</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="priority-select">Priority</label>
+              <p class="hint" id="priority-hint">Change to Urgent if the fault gets worse. It moves up the queue.</p>
+              <select id="priority-select" name="priority" aria-describedby="priority-hint">
+                <option value="Normal">Normal</option>
+                <option value="Urgent">Urgent</option>
+              </select>
+            </div>
+
+            <div class="field">
+              <label for="note">Progress note</label>
+              <p class="hint" id="note-hint">A note is required when marking a job Completed.</p>
+              <textarea id="note" name="note" aria-describedby="note-hint note-error"></textarea>
+              <p class="field-error" id="note-error"></p>
+            </div>
+
+            <button type="submit">Save update</button>
+            <p id="update-result" class="inline-result" hidden></p>
+          </form>
+        </section>
+
+        <!-- Get help: contractors matched to this fault -->
+        <section class="panel" aria-labelledby="help-heading">
+          <h2 id="help-heading">Get help</h2>
+          <p class="help-intro">Suggested from the fault description.</p>
+          <p id="help-result" class="inline-result" tabindex="-1" hidden></p>
+          <div id="help-content"></div>
+          <p class="fictional-note">Contractors and phone numbers are fictional demo data.</p>
+        </section>
+        </div>
+      </div>
+    </div>
+  </main>
+
+  <footer>
+    <p>Repair Tracker. Data is saved in this browser only.</p>
+    <button type="button" id="clear-data" class="danger-outline">Clear all data</button>
+  </footer>
+
+  <script>
+    "use strict";
+
+    /* =========================================================
+       CONSTANTS
+       ========================================================= */
+    const JOBS_KEY = "mh_jobs";       // localStorage key for the job list
+    const COUNTER_KEY = "mh_nextId";  // localStorage key for the ID counter
+    const HOME = "Meadow House"; // default value of the Home field
+    const STATUSES = ["New", "In Progress", "Completed"];
+    const PRIORITIES = ["Normal", "Urgent"];
+
+    /* =========================================================
+       GET HELP: trades, contractors and emergency advice
+       Each trade has a regular expression of keywords. If the fault
+       description matches, that trade is suggested. \b means "start of
+       a word", so "door" matches "doors" but not "outdoor".
+       Contractors and numbers are FICTIONAL (01632 960xxx is Ofcom's
+       range reserved for drama/demo use, so they can't ring anyone).
+       ========================================================= */
+    const TRADES = [
+      {
+        name: "Plumber",
+        examples: "leaks, taps, toilets, pipes, boilers and drains",
+        match: /\b(leak\w*|taps?|pipes?|toilets?|boilers?|water|drains?|sinks?|showers?|radiators?|flood\w*|blocked|overflow\w*|bath\w*)\b/i,
+        contractors: [
+          { name: "Meadow Valley Plumbing", phone: "01632 960101", note: "24/7 emergency call-outs" },
+          { name: "FlowRight Plumbing & Heating", phone: "01632 960102", note: "Mon–Sat, 8am–6pm" }
+        ]
+      },
+      {
+        name: "Carpenter",
+        examples: "fences, doors, gates, floors, cupboards and sheds",
+        match: /\b(fence\w*|doors?|gates?|shel(f|ves)|wood\w*|cupboards?|floorboards?|floor|deck\w*|sheds?|hinges?|wardrobes?|stairs?|banisters?)\b/i,
+        contractors: [
+          { name: "Oakline Carpentry & Fencing", phone: "01632 960201", note: "Fence repairs within 48 hours" },
+          { name: "Heartwood Joinery", phone: "01632 960202", note: "Doors, floors and fitted furniture" }
+        ]
+      },
+      {
+        name: "Electrician",
+        examples: "lights, sockets, switches and power faults",
+        match: /\b(lights?|lighting|bulbs?|sockets?|switch\w*|power|electric\w*|fuse\w*|wiring|wires?|plugs?|lamps?|sparks?)\b/i,
+        contractors: [
+          { name: "BrightSpark Electrical", phone: "01632 960301", note: "Same-day call-outs" },
+          { name: "Circuit Care Electrics", phone: "01632 960302", note: "Mon–Fri, 8am–5pm" }
+        ]
+      },
+      {
+        name: "Glazier",
+        examples: "windows and broken glass",
+        match: /\b(windows?|glass|panes?|glazing|smashed)\b/i,
+        contractors: [
+          { name: "ClearView Glazing", phone: "01632 960401", note: "Emergency boarding-up available" }
+        ]
+      },
+      {
+        name: "Roofer",
+        examples: "roofs, gutters, tiles and chimneys",
+        match: /\b(roof\w*|gutters?|tiles?|slates?|chimneys?)\b/i,
+        contractors: [
+          { name: "Topside Roofing", phone: "01632 960501", note: "Storm damage specialists" }
+        ]
+      }
+    ];
+
+    // Shown when nothing else matches
+    const GENERAL_TRADE = {
+      name: "Handyperson",
+      examples: "general repairs and anything not listed",
+      contractors: [
+        { name: "Meadow House Maintenance Team", phone: "01632 960001", note: "On site Mon–Fri, 9am–5pm" },
+        { name: "OddJobs Handyperson Service", phone: "01632 960002", note: "Small repairs, flexible hours" }
+      ]
+    };
+
+    // Safety first: these real UK numbers appear above the contractors.
+    const EMERGENCIES = [
+      {
+        match: /\b(gas|carbon monoxide)\b/i,
+        title: "If you can smell gas",
+        text: "Do not use switches or flames. Open windows, leave the building and call the National Gas Emergency Service (free, 24 hours).",
+        phone: "0800 111 999"
+      },
+      {
+        match: /\b(fire|smoke|smoking|burning)\b/i,
+        title: "Fire or immediate danger",
+        text: "Get everyone out and call the emergency services.",
+        phone: "999"
+      },
+      {
+        match: /\b(power cut|no power|blackout)\b/i,
+        title: "Power cut",
+        text: "Call 105 (free) to reach your local electricity network operator.",
+        phone: "105"
+      },
+      {
+        match: /\b(flood\w*|burst)\b/i,
+        title: "Water escaping",
+        text: "Turn off the water at the stopcock (usually under the kitchen sink), then call a plumber."
+      }
+    ];
+
+    function suggestedTrades(description) {
+      const matches = TRADES.filter(function (t) { return t.match.test(description); });
+      return matches.length > 0 ? matches : [GENERAL_TRADE];
+    }
+
+    function emergenciesFor(description) {
+      return EMERGENCIES.filter(function (e) { return e.match.test(description); });
+    }
+
+    const MSG = {
+      descriptionMissing: "Enter a description of the fault.",
+      reporterMissing: "Enter the name of the person reporting the fault.",
+      completionNoteMissing: "Enter a completion note describing the work done before marking this job Completed.",
+      nothingToSave: "Enter a progress note or choose a new status.",
+      saveFailed: "Your change could not be saved in this browser. Nothing was changed."
+    };
+
+    /* =========================================================
+       STORAGE (localStorage, wrapped in try/catch)
+       ========================================================= */
+    function loadJobs() {
+      try {
+        const raw = localStorage.getItem(JOBS_KEY);
+        if (!raw) return [];
+        const data = JSON.parse(raw);
+        return Array.isArray(data) ? data : [];
+      } catch (err) {
+        return []; // missing or corrupt data: start empty instead of crashing
+      }
+    }
+
+    // Returns true only if the save really worked.
+    function saveJobs(list) {
+      try {
+        localStorage.setItem(JOBS_KEY, JSON.stringify(list));
+        return true;
+      } catch (err) {
+        return false;
+      }
+    }
+
+    // Next ID number. Never reused: taken from a saved counter, and never
+    // allowed to fall behind the highest ID already stored.
+    function getNextIdNumber() {
+      let n = 1;
+      try {
+        n = parseInt(localStorage.getItem(COUNTER_KEY), 10);
+      } catch (err) { /* ignore */ }
+      if (!Number.isInteger(n) || n < 1) n = 1;
+
+      const highest = jobs.reduce(function (max, job) {
+        const num = parseInt(String(job.id).replace("MH-", ""), 10);
+        return Number.isInteger(num) ? Math.max(max, num) : max;
+      }, 0);
+
+      return Math.max(n, highest + 1);
+    }
+
+    function saveNextIdNumber(n) {
+      try { localStorage.setItem(COUNTER_KEY, String(n)); } catch (err) { /* ignore */ }
+    }
+
+    /* =========================================================
+       STATE
+       ========================================================= */
+    let jobs = loadJobs();
+    let currentJobId = null;
+
+    /* =========================================================
+       QUEUE LOGIC
+       The queue = tickets with status "New" (waiting to be started).
+       Order: Urgent before Normal, then oldest first (first come, first served).
+       In Progress tickets are being worked on, so they are not "in line".
+       ========================================================= */
+    function byCreated(a, b) {
+      if (a.createdAt === b.createdAt) return a.id.localeCompare(b.id);
+      return a.createdAt < b.createdAt ? -1 : 1;
+    }
+
+    function queue() {
+      return jobs
+        .filter(function (j) { return j.status === "New"; })
+        .sort(function (a, b) {
+          if (a.priority !== b.priority) return a.priority === "Urgent" ? -1 : 1;
+          return byCreated(a, b);
+        });
+    }
+
+    /* ---------- Estimated wait ----------
+       Average repair time = from when work started (In Progress) to
+       Completed, over all completed jobs. Jobs ahead in the queue plus
+       jobs being worked on now, times that average, gives a rough start.
+       A repair visit rarely takes under 30 minutes, so that is the floor. */
+    const MIN_JOB_MS = 30 * 60 * 1000;
+    const DEFAULT_JOB_MS = 2 * 60 * 60 * 1000;  // used until we have real data
+
+    function averageWorkMs() {
+      const done = jobs.filter(function (j) { return j.status === "Completed"; });
+      if (done.length === 0) return null;
+      const total = done.reduce(function (sum, j) {
+        const started = j.history.find(function (h) { return h.status === "In Progress"; });
+        const from = new Date(started ? started.at : j.createdAt).getTime();
+        return sum + (new Date(statusSince(j)).getTime() - from);
+      }, 0);
+      return Math.max(total / done.length, MIN_JOB_MS);
+    }
+
+    function estimateText(job) {
+      if (job.status !== "New") return "";
+      const index = queue().findIndex(function (j) { return j.id === job.id; });
+      const working = jobs.filter(function (j) { return j.status === "In Progress"; }).length;
+      const ahead = index + working;
+      if (ahead <= 0) return "Estimated start: now";
+      const average = averageWorkMs();
+      const each = average || DEFAULT_JOB_MS;
+      const wait = Math.max(15 * 60 * 1000, Math.round(ahead * each / (15 * 60 * 1000)) * 15 * 60 * 1000);
+      return "Estimated start: in about " + formatDuration(wait) +
+        (average ? " (based on past repairs)" : " (rough guess until jobs are completed)");
+    }
+
+    // Returns { place, detail } describing where a ticket stands.
+    function queueInfo(job) {
+      if (job.status === "Completed") {
+        return { place: "Completed", detail: "No longer in the queue" };
+      }
+      if (job.status === "In Progress") {
+        return { place: "Being worked on", detail: "Repair in progress" };
+      }
+      const q = queue();
+      const index = q.findIndex(function (j) { return j.id === job.id; });
+      const ahead = index;
+      return {
+        place: "Position " + (index + 1) + " of " + q.length,
+        detail: ahead === 0 ? "Next in line" :
+          ahead + (ahead === 1 ? " job" : " jobs") + " ahead"
+      };
+    }
+
+    function renderQueueBar() {
+      const counts = { "New": 0, "In Progress": 0, "Completed": 0 };
+      jobs.forEach(function (j) { if (counts[j.status] !== undefined) counts[j.status]++; });
+
+      document.getElementById("count-waiting").textContent = counts["New"];
+      document.getElementById("count-progress").textContent = counts["In Progress"];
+      document.getElementById("count-done").textContent = counts["Completed"];
+
+      const next = queue()[0];
+      document.getElementById("next-id").textContent = next ? next.id + " (" + next.priority + ")" : "None";
+      document.getElementById("next-text").textContent = next ? next.description : "The queue is empty.";
+
+      // Overdue count and average completion time
+      document.getElementById("count-overdue").textContent = jobs.filter(isOverdue).length;
+      const done = jobs.filter(function (j) { return j.status === "Completed"; });
+      if (done.length === 0) {
+        document.getElementById("avg-time").textContent = "No completed jobs yet";
+      } else {
+        const total = done.reduce(function (sum, j) {
+          return sum + (new Date(statusSince(j)).getTime() - new Date(j.createdAt).getTime());
+        }, 0);
+        document.getElementById("avg-time").textContent = formatDuration(total / done.length) +
+          " (from " + done.length + (done.length === 1 ? " completed job)" : " completed jobs)");
+      }
+    }
+
+    /* =========================================================
+       HELPERS
+       ========================================================= */
+    function formatId(n) {
+      return "MH-" + String(n).padStart(4, "0");
+    }
+
+    // e.g. "19 Oct 2026, 10:30:15" (UK date AND time)
+    function formatDateTime(iso) {
+      const d = new Date(iso);
+      if (isNaN(d.getTime())) return "Unknown date";
+      return d.toLocaleString("en-GB", {
+        day: "numeric", month: "short", year: "numeric",
+        hour: "2-digit", minute: "2-digit", second: "2-digit"
+      });
+    }
+
+    // Latest note = most recent history entry with a non-empty note.
+    function latestNote(job) {
+      for (let i = job.history.length - 1; i >= 0; i--) {
+        const note = job.history[i].note;
+        if (note && note.trim() !== "") return note;
+      }
+      return "";
+    }
+
+    function findJob(id) {
+      return jobs.find(function (j) { return j.id === id; });
+    }
+
+    // Create an element. Text is ALWAYS set with textContent, so anything a user
+    // typed (even "<b>" or "<script>") is shown as plain text and never run.
+    function el(tag, className, text) {
+      const node = document.createElement(tag);
+      if (className) node.className = className;
+      if (text !== undefined) node.textContent = text;
+      return node;
+    }
+
+    function addDetail(dl, label, value, isUserText) {
+      dl.appendChild(el("dt", "", label));
+      dl.appendChild(el("dd", isUserText ? "user-text" : "", value));
+    }
+
+    function priorityBadge(priority) {
+      const cls = priority === "Urgent" ? "badge priority-urgent" : "badge priority-normal";
+      return el("span", cls, "Priority: " + priority);
+    }
+
+    function statusBadge(status) {
+      const cls = status === "Completed" ? "status-done" :
+                  status === "In Progress" ? "status-progress" : "status-new";
+      return el("span", "badge " + cls, "Status: " + status);
+    }
+
+    /* ---------- Messages ---------- */
+    const statusMessage = document.getElementById("status-message");
+
+    const inlineResults = [
+      document.getElementById("help-result"),
+      document.getElementById("report-result"),
+      document.getElementById("update-result")
+    ];
+
+    // Shows the success message in two places:
+    //  1. the live status area at the top (announced by screen readers)
+    //  2. right under the button that was pressed (localEl), so it is
+    //     visible even when the page is scrolled down on a phone.
+    function announce(text, localEl) {
+      statusMessage.textContent = "";
+      // small delay so screen readers notice the change even if the text repeats
+      setTimeout(function () { statusMessage.textContent = "Success: " + text; }, 50);
+      if (localEl) {
+        localEl.textContent = "✓ " + text;
+        localEl.hidden = false;
+      }
+    }
+
+    function clearAnnouncement() {
+      statusMessage.textContent = "";
+      inlineResults.forEach(function (p) { p.hidden = true; p.textContent = ""; });
+    }
+
+    // errors = [{ input, errorEl, message }]
+    function showErrors(summaryEl, errors) {
+      summaryEl.textContent = "";
+      summaryEl.appendChild(el("h3", "", "There is a problem"));
+      const ul = el("ul");
+      errors.forEach(function (e) {
+        ul.appendChild(el("li", "", e.message));
+        if (e.input) e.input.setAttribute("aria-invalid", "true");
+        if (e.errorEl) e.errorEl.textContent = e.message;
+      });
+      summaryEl.appendChild(ul);
+      summaryEl.hidden = false;
+
+      // Move keyboard focus to the first field that needs fixing
+      const first = errors.find(function (e) { return e.input; });
+      if (first) first.input.focus(); else summaryEl.focus();
+    }
+
+    function clearErrors(summaryEl, fields) {
+      summaryEl.hidden = true;
+      summaryEl.textContent = "";
+      fields.forEach(function (f) {
+        f.input.removeAttribute("aria-invalid");
+        f.errorEl.textContent = "";
+      });
+    }
+
+    /* =========================================================
+       REPORT A FAULT
+       ========================================================= */
+    const reportForm = document.getElementById("report-form");
+    const descriptionInput = document.getElementById("description");
+    const reporterInput = document.getElementById("reporter");
+    const descriptionError = document.getElementById("description-error");
+    const reporterError = document.getElementById("reporter-error");
+    const reportErrors = document.getElementById("report-errors");
+
+    const postcodeInput = document.getElementById("postcode");
+    const postcodeError = document.getElementById("postcode-error");
+    const POSTCODE_KEY = "mh_postcode";
+
+    const phoneInput = document.getElementById("phone");
+    const phoneError = document.getElementById("phone-error");
+
+    // UK phone check: remove spaces, dashes and brackets, then expect
+    // 0 followed by 9-10 digits, or +44 followed by 9-10 digits.
+    function phoneDigits(value) {
+      return value.replace(/[\s\-()]/g, "");
+    }
+    function isValidPhone(value) {
+      return /^(0|\+44)\d{9,10}$/.test(phoneDigits(value));
+    }
+
+    const homeInput = document.getElementById("home");
+    const homeError = document.getElementById("home-error");
+
+    const reportFields = [
+      { input: homeInput, errorEl: homeError },
+      { input: descriptionInput, errorEl: descriptionError },
+      { input: reporterInput, errorEl: reporterError },
+      { input: phoneInput, errorEl: phoneError },
+      { input: postcodeInput, errorEl: postcodeError }
+    ];
+
+    // UK postcode shape, e.g. M1 1AE, SW1A 2AA, B33 8TH (space optional).
+    const POSTCODE_PATTERN = /^[A-Z]{1,2}\d[A-Z\d]?\s?\d[A-Z]{2}$/;
+
+    // Tidy what the user typed: capitals, single space before the last 3 characters.
+    function normalisePostcode(value) {
+      const compact = value.toUpperCase().replace(/\s+/g, "");
+      if (compact.length < 5) return compact;
+      return compact.slice(0, -3) + " " + compact.slice(-3);
+    }
+
+    function savedPostcode() {
+      try { return localStorage.getItem(POSTCODE_KEY) || ""; } catch (err) { return ""; }
+    }
+
+    // Pre-fill with the last postcode used (Meadow House doesn't move).
+    postcodeInput.value = savedPostcode();
+
+    /* ---------- Quick-pick chips ----------
+       A chip fills the description. It never wipes what the user typed:
+       an empty box (or one holding the last chip's text) is replaced,
+       anything else gets the chip text added on a new line. */
+    /* ---------- Is it really urgent? ----------
+       Each rule is a pattern plus a plain-English reason. The app only
+       SUGGESTS Urgent; the person reporting always makes the final choice
+       (so the priority they pick is always the one saved). */
+    const URGENT_RULES = [
+      { match: /\b(gas|carbon monoxide)\b/i, reason: "possible gas leak" },
+      { match: /\b(fire|smoke|smoking|burning|sparks?|sparking|scorch\w*)\b/i, reason: "fire or electrical danger" },
+      { match: /\b(flood\w*|burst|pouring|gushing|water (coming )?through)\b/i, reason: "water escaping" },
+      { match: /\b(no|not|without) (heating|hot water|heat)\b|\bboiler (not working|broken|failed)\b/i, reason: "no heating or hot water" },
+      { match: /\b(no|not|without) (power|electricity)\b|\bpower cut\b/i, reason: "no power" },
+      { match: /\b(exposed|bare|live) wires?\b|\belectric shock\b/i, reason: "electrical danger" },
+      { match: /\b(can'?t|cannot|won'?t|will not|doesn'?t|does not) (lock|close|shut)\b|\b(smashed|broken) (window|glass|lock|door)\b|\bbreak[- ]?in\b/i, reason: "the home is not secure" },
+      { match: /\b(unsafe|dangerous|danger|injur\w*|hurt|collaps\w*)\b/i, reason: "someone could get hurt" },
+      { match: /\b(no water|toilet (blocked|overflowing)|sewage)\b/i, reason: "no water or sanitation" }
+    ];
+
+    function urgencyReasons(text) {
+      return URGENT_RULES
+        .filter(function (r) { return r.match.test(text); })
+        .map(function (r) { return r.reason; });
+    }
+
+    const urgencyHint = document.getElementById("urgency-hint");
+    const priorityNormal = document.getElementById("priority-normal");
+    const priorityUrgent = document.getElementById("priority-urgent");
+
+    function updateUrgencyHint() {
+      const text = descriptionInput.value;
+      const reasons = urgencyReasons(text);
+      const emergencies = emergenciesFor(text);
+      urgencyHint.textContent = "";
+      urgencyHint.className = "urgency-hint";
+      if (reasons.length === 0) return;
+
+      const reasonText = reasons.join(", ");
+      if (priorityUrgent.checked) {
+        urgencyHint.classList.add("is-urgent");
+        urgencyHint.appendChild(el("p", "", "✓ Marked Urgent. This sounds urgent: " + reasonText + "."));
+      } else {
+        urgencyHint.classList.add("suggest");
+        urgencyHint.appendChild(el("p", "", "⚠ This sounds urgent: " + reasonText +
+          ". Urgent jobs go to the front of the queue."));
+        const btn = el("button", "secondary", "Mark as Urgent");
+        btn.type = "button";
+        btn.addEventListener("click", function () {
+          priorityUrgent.checked = true;
+          updateUrgencyHint();
+          priorityUrgent.focus();
+        });
+        urgencyHint.appendChild(btn);
+      }
+      // Real dangers get the safety number straight away, before saving
+      emergencies.forEach(function (e) {
+        if (!e.phone) return;
+        const p = el("p", "urgency-safety", "Safety first: " + e.title.toLowerCase() + ". ");
+        p.appendChild(callLink(e.phone, "Call " + e.phone));
+        urgencyHint.appendChild(p);
+      });
+    }
+
+    descriptionInput.addEventListener("input", updateUrgencyHint);
+    priorityNormal.addEventListener("change", updateUrgencyHint);
+    priorityUrgent.addEventListener("change", updateUrgencyHint);
+
+    let lastChipText = "";
+    document.querySelectorAll(".chip").forEach(function (chip) {
+      chip.addEventListener("click", function () {
+        const text = chip.dataset.text;
+        const current = descriptionInput.value;
+        if (current.trim() === "" || current === lastChipText) {
+          descriptionInput.value = text;
+        } else {
+          descriptionInput.value = current.replace(/\s+$/, "") + "\n" + text;
+        }
+        lastChipText = descriptionInput.value;
+        updateUrgencyHint();
+        descriptionInput.focus();
+        // put the cursor at the end so the user can keep typing details
+        const end = descriptionInput.value.length;
+        descriptionInput.setSelectionRange(end, end);
+      });
+    });
+
+    reportForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      clearAnnouncement();
+      clearErrors(reportErrors, reportFields);
+
+      const home = homeInput.value.trim();
+      const description = descriptionInput.value.trim();
+      const reporter = reporterInput.value.trim();
+      const postcode = postcodeInput.value.trim() === "" ? "" : normalisePostcode(postcodeInput.value.trim());
+      const checked = reportForm.querySelector('input[name="priority"]:checked');
+      const priority = checked && PRIORITIES.includes(checked.value) ? checked.value : "Normal";
+
+      // 1. Validate first. Empty or spaces-only values are rejected.
+      const errors = [];
+      if (home === "") {
+        errors.push({ input: homeInput, errorEl: homeError,
+          message: "Enter the home or address where the fault is." });
+      }
+      if (description === "") {
+        errors.push({ input: descriptionInput, errorEl: descriptionError, message: MSG.descriptionMissing });
+      }
+      if (reporter === "") {
+        errors.push({ input: reporterInput, errorEl: reporterError, message: MSG.reporterMissing });
+      }
+      // Phone is optional: only check it if something was typed
+      const phone = phoneInput.value.trim();
+      if (phone !== "" && !isValidPhone(phone)) {
+        errors.push({ input: phoneInput, errorEl: phoneError,
+          message: "Enter a valid UK phone number, like 07700 900123, or leave it blank." });
+      }
+      // Postcode is optional: only check it if something was typed
+      if (postcode !== "" && !POSTCODE_PATTERN.test(postcode)) {
+        errors.push({ input: postcodeInput, errorEl: postcodeError,
+          message: "Enter a valid UK postcode, like M1 1AE, or leave it blank." });
+      }
+      if (errors.length > 0) {
+        showErrors(reportErrors, errors); // no job created, typed text kept
+        return;
+      }
+
+      // 2. Build the new job
+      const idNumber = getNextIdNumber();
+      const now = new Date().toISOString();
+      const job = {
+        id: formatId(idNumber),
+        home: home,
+        description: description,
+        reporter: reporter,
+        priority: priority,
+        status: "New",
+        createdAt: now,
+        history: [{ at: now, status: "New", note: "Report created" }]
+      };
+      if (postcode !== "") job.postcode = postcode;
+      if (phone !== "") job.phone = phone;
+      if (selectedRoom) job.room = selectedRoom;
+
+      // 3. Save a NEW list; only replace the in-memory list if saving worked
+      const updated = jobs.concat([job]);
+      if (!saveJobs(updated)) {
+        showErrors(reportErrors, [{ message: MSG.saveFailed }]);
+        return;
+      }
+      jobs = updated;
+      saveNextIdNumber(idNumber + 1);
+
+      // 4. Reset form and show the result, including the new queue position
+      reportForm.reset(); // priority goes back to Normal
+      updateUrgencyHint(); // description is empty again, so this clears the hint
+      selectedRoom = "";
+      buildRoomPicker();
+      try {
+        if (postcode !== "") localStorage.setItem(POSTCODE_KEY, postcode);
+      } catch (err) { /* ignore */ }
+      postcodeInput.value = savedPostcode(); // keep the postcode for the next report
+      renderDirectory();  // directory search links now use the postcode
+      resetFilters();     // make sure the new ticket is visible in the list
+      renderList();
+      const info = queueInfo(job);
+      announce("Job " + job.id + " reported. " + info.place + " in the queue (" + info.detail.toLowerCase() + "). " +
+        estimateText(job) + "." +
+        (job.phone ? " You can expect a phone call soon on " + job.phone + "." : ""),
+        document.getElementById("report-result"));
+    });
+
+    /* =========================================================
+       TICKET LIST
+       ========================================================= */
+    const jobList = document.getElementById("job-list");
+    const noJobs = document.getElementById("no-jobs");
+
+    // Display order: In Progress, then the waiting queue in order, then Completed (newest first)
+    function displayOrder() {
+      const inProgress = jobs.filter(function (j) { return j.status === "In Progress"; }).sort(byCreated);
+      const done = jobs.filter(function (j) { return j.status === "Completed"; })
+        .sort(function (a, b) { return byCreated(b, a); });
+      return inProgress.concat(queue(), done);
+    }
+
+    /* ---------- Search and filters ---------- */
+    const searchInput = document.getElementById("search");
+    const filterButtons = Array.prototype.slice.call(document.querySelectorAll(".filter-btn"));
+    const noMatches = document.getElementById("no-matches");
+    const resultCount = document.getElementById("result-count");
+    const ticketTotal = document.getElementById("ticket-total");
+    let activeFilter = "All";
+    let searchTerm = "";
+
+    const sortSelect = document.getElementById("sort-select");
+    sortSelect.addEventListener("change", function () { renderList(); });
+
+    // Queue order is the default (In Progress, then the queue, then Completed).
+    function sortedJobs() {
+      const mode = sortSelect.value;
+      if (mode === "queue") return displayOrder();
+      const list = jobs.slice();
+      if (mode === "newest") return list.sort(function (a, b) { return byCreated(b, a); });
+      if (mode === "oldest") return list.sort(byCreated);
+      // urgent first, newest first within each priority
+      return list.sort(function (a, b) {
+        if (a.priority !== b.priority) return a.priority === "Urgent" ? -1 : 1;
+        return byCreated(b, a);
+      });
+    }
+
+    /* ---------- Rooms + home map ----------
+       The floor plan is a CSS grid; each room is a real <button>,
+       so it works with a keyboard and screen readers. */
+    const ROOMS = [
+      { name: "Bedroom 1", area: "b1" },
+      { name: "Bedroom 2", area: "b2" },
+      { name: "Bathroom", area: "bath" },
+      { name: "Lounge", area: "lounge" },
+      { name: "Hall", area: "hall" },
+      { name: "Kitchen", area: "kitchen" },
+      { name: "Garden", area: "garden" },
+      { name: "Roof / outside", area: "outside" }
+    ];
+    let selectedRoom = "";   // room picked in the report form
+    let roomFilter = "";     // room picked on the home map
+
+    const roomPicker = document.getElementById("room-picker");
+    function buildRoomPicker() {
+      roomPicker.textContent = "";
+      ROOMS.forEach(function (room) {
+        const btn = el("button", "room-btn", room.name);
+        btn.type = "button";
+        btn.style.gridArea = room.area;
+        btn.setAttribute("aria-pressed", selectedRoom === room.name ? "true" : "false");
+        btn.addEventListener("click", function () {
+          selectedRoom = selectedRoom === room.name ? "" : room.name;  // tap again to clear
+          buildRoomPicker();
+          roomPicker.querySelector('[style*="' + room.area + '"]').focus();
+        });
+        roomPicker.appendChild(btn);
+      });
+    }
+
+    const roomMap = document.getElementById("room-map");
+    function renderRoomMap() {
+      roomMap.textContent = "";
+      ROOMS.forEach(function (room) {
+        const open = jobs.filter(function (j) { return j.room === room.name && j.status !== "Completed"; });
+        const urgent = open.filter(function (j) { return j.priority === "Urgent"; }).length;
+        const btn = el("button", "room-btn" + (open.length ? " has-faults" : "") + (urgent ? " has-urgent" : ""));
+        btn.type = "button";
+        btn.style.gridArea = room.area;
+        btn.appendChild(el("span", "room-name", room.name));
+        btn.appendChild(el("span", "room-count",
+          open.length === 0 ? "No open faults" :
+          open.length + " open" + (urgent ? " (" + urgent + " urgent)" : "")));
+        btn.setAttribute("aria-pressed", roomFilter === room.name ? "true" : "false");
+        btn.addEventListener("click", function () {
+          roomFilter = roomFilter === room.name ? "" : room.name;
+          renderList();
+          roomMap.querySelector('[style*="' + room.area + '"]').focus();
+        });
+        roomMap.appendChild(btn);
+      });
+    }
+
+    function matchesFilters(job) {
+      if (roomFilter && job.room !== roomFilter) return false;
+      let statusOk = true;
+      if (activeFilter === "Urgent") statusOk = job.priority === "Urgent";
+      else if (activeFilter !== "All") statusOk = job.status === activeFilter;
+      if (!statusOk) return false;
+      if (searchTerm === "") return true;
+      const haystack = (job.id + " " + job.description + " " + job.reporter + " " + (job.room || "")).toLowerCase();
+      return haystack.indexOf(searchTerm) !== -1;
+    }
+
+    function setFilter(value) {
+      activeFilter = value;
+      filterButtons.forEach(function (b) {
+        b.setAttribute("aria-pressed", b.dataset.filter === value ? "true" : "false");
+      });
+    }
+
+    function resetFilters() {
+      setFilter("All");
+      roomFilter = "";
+      searchTerm = "";
+      searchInput.value = "";
+    }
+
+    filterButtons.forEach(function (b) {
+      b.addEventListener("click", function () { setFilter(b.dataset.filter); renderList(); });
+    });
+    searchInput.addEventListener("input", function () {
+      searchTerm = searchInput.value.trim().toLowerCase();
+      renderList();
+    });
+
+    /* ---------- Time tracking ---------- */
+    // When did the ticket's CURRENT status start? Walk back through the
+    // history while the entries still have the same status.
+    function statusSince(job) {
+      let since = job.history[job.history.length - 1].at;
+      for (let i = job.history.length - 1; i >= 0; i--) {
+        if (job.history[i].status !== job.status) break;
+        since = job.history[i].at;
+      }
+      return since;
+    }
+
+    function formatDuration(ms) {
+      const mins = Math.floor(Math.max(0, ms) / 60000);
+      if (mins < 1) return "under a minute";
+      if (mins < 60) return mins + " min";
+      const hours = Math.floor(mins / 60);
+      if (hours < 24) return hours + " h" + (mins % 60 ? " " + (mins % 60) + " min" : "");
+      const days = Math.floor(hours / 24);
+      return days + (days === 1 ? " day" : " days") + (hours % 24 ? " " + (hours % 24) + " h" : "");
+    }
+
+    function elapsedText(job) {
+      const now = Date.now();
+      const since = new Date(statusSince(job)).getTime();
+      if (job.status === "Completed") {
+        return "Completed in " + formatDuration(since - new Date(job.createdAt).getTime());
+      }
+      if (job.status === "In Progress") return "In Progress for " + formatDuration(now - since);
+      return "Waiting for " + formatDuration(now - since);
+    }
+
+    /* ---------- Overdue rules ----------
+       A job is overdue when it is not Completed and has been open longer
+       than its limit. Change these numbers to suit (e.g. for a demo). */
+    const OVERDUE_LIMIT_MS = {
+      "Urgent": 60 * 60 * 1000,          // 1 hour
+      "Normal": 3 * 24 * 60 * 60 * 1000  // 3 days
+    };
+
+    function isOverdue(job) {
+      if (job.status === "Completed") return false;
+      const age = Date.now() - new Date(job.createdAt).getTime();
+      return age > (OVERDUE_LIMIT_MS[job.priority] || OVERDUE_LIMIT_MS.Normal);
+    }
+
+    // Always created, just hidden when not overdue, so the 30-second timer
+    // can switch it on without re-drawing the page.
+    function overdueBadge(job) {
+      const badge = el("span", "badge overdue", "Overdue");
+      badge.dataset.overdueJob = job.id;
+      badge.hidden = !isOverdue(job);
+      return badge;
+    }
+
+    function elapsedEl(tag, job) {
+      const node = el(tag, "elapsed", elapsedText(job));
+      node.dataset.job = job.id;
+      return node;
+    }
+
+    // Refresh only the time labels every 30 seconds (no full re-render,
+    // so keyboard focus and typed text are never disturbed).
+    setInterval(function () {
+      document.querySelectorAll(".elapsed[data-job]").forEach(function (node) {
+        const job = findJob(node.dataset.job);
+        if (job) node.textContent = elapsedText(job);
+      });
+      document.querySelectorAll("[data-overdue-job]").forEach(function (node) {
+        const job = findJob(node.dataset.overdueJob);
+        if (job) node.hidden = !isOverdue(job);
+      });
+      renderQueueBar(); // updates counts and stats only, never moves focus
+    }, 30000);
+
+    /* ---------- Recent activity ----------
+       Every history entry of every job, newest first (latest 8).
+       It reads the same append-only history the job pages use. */
+    const ACTIVITY_LIMIT = 8;
+    function describeEntry(entry, index) {
+      if (index === 0) return "Reported";
+      if (entry.booking) return entry.booking;
+      if (entry.priorityChange) return "Priority changed from " + entry.priorityChange +
+        (entry.note ? ". Note: " + entry.note : "");
+      return "Status: " + entry.status + (entry.note ? ". Note: " + entry.note : "");
+    }
+
+    function renderActivity() {
+      const list = document.getElementById("activity-list");
+      list.textContent = "";
+      const events = [];
+      jobs.forEach(function (job) {
+        job.history.forEach(function (entry, i) {
+          events.push({ job: job, entry: entry, index: i });
+        });
+      });
+      events.sort(function (a, b) { return a.entry.at < b.entry.at ? 1 : a.entry.at > b.entry.at ? -1 : 0; });
+      document.getElementById("no-activity").hidden = events.length > 0;
+
+      events.slice(0, ACTIVITY_LIMIT).forEach(function (ev) {
+        const tone = ev.index === 0 ? "a-new" : ev.entry.booking ? "a-booking" :
+          ev.entry.status === "Completed" ? "a-done" : ev.entry.status === "In Progress" ? "a-progress" : "a-new";
+        const li = el("li", "activity-item " + tone);
+        const top = el("p", "activity-top");
+        const open = el("button", "activity-job", "");
+        open.type = "button";
+        open.appendChild(el("span", "visually-hidden", "Open job "));
+        open.appendChild(document.createTextNode(ev.job.id));
+        open.addEventListener("click", function () { openJob(ev.job.id); });
+        top.appendChild(open);
+        top.appendChild(el("span", "activity-time", formatDateTime(ev.entry.at)));
+        li.appendChild(top);
+        li.appendChild(el("p", "activity-desc user-text", ev.job.description));
+        li.appendChild(el("p", "activity-what user-text", describeEntry(ev.entry, ev.index)));
+        list.appendChild(li);
+      });
+    }
+
+    function renderList() {
+      renderQueueBar();
+      jobList.textContent = "";
+      noJobs.hidden = jobs.length > 0;
+      ticketTotal.textContent = jobs.length;
+
+      const visible = sortedJobs().filter(matchesFilters);
+      noMatches.hidden = !(jobs.length > 0 && visible.length === 0);
+      const filtering = activeFilter !== "All" || searchTerm !== "" || roomFilter !== "";
+      resultCount.textContent = filtering ? "Showing " + visible.length + " of " + jobs.length + " jobs" +
+        (roomFilter ? " in " + roomFilter + " (select it again on the home map to show all)" : "") : "";
+      renderRoomMap();
+      renderActivity();
+
+      visible.forEach(function (job) {
+        const li = el("li", "ticket" + (job.priority === "Urgent" ? " urgent" : ""));
+        const info = queueInfo(job);
+
+        // Left stub: ticket number, place in the queue and time
+        const stub = el("div", "ticket-stub");
+        stub.appendChild(el("p", "ticket-id", job.id));
+        stub.appendChild(el("p", "queue-place", info.place));
+        stub.appendChild(el("p", "queue-detail", info.detail));
+        stub.appendChild(elapsedEl("p", job));
+        const est = estimateText(job);
+        if (est) stub.appendChild(el("p", "estimate", est));
+        li.appendChild(stub);
+
+        // Right body: details
+        const body = el("div", "ticket-body");
+        body.appendChild(el("h3", "user-text", job.description));
+
+        const badges = el("div", "badges");
+        badges.appendChild(priorityBadge(job.priority));
+        badges.appendChild(statusBadge(job.status));
+        badges.appendChild(overdueBadge(job));
+        body.appendChild(badges);
+
+        const dl = el("dl", "details");
+        addDetail(dl, "Home", job.home, true);
+        if (job.room) addDetail(dl, "Room", job.room, false);
+        addDetail(dl, "Reporter", job.reporter, true);
+        addDetail(dl, "Reported", formatDateTime(job.createdAt), false);
+        addDetail(dl, "Latest note", latestNote(job) || "No notes yet", true);
+        addDetail(dl, "Suggested help", tradeNames(job), false);
+        if (job.contractor) addDetail(dl, "Contractor", job.contractor.name, false);
+        body.appendChild(dl);
+
+        const openBtn = el("button", "secondary", "Open job " + job.id);
+        openBtn.type = "button";
+        openBtn.addEventListener("click", function () { openJob(job.id); });
+        body.appendChild(openBtn);
+
+        li.appendChild(body);
+        jobList.appendChild(li);
+      });
+    }
+
+    /* =========================================================
+       TICKET DETAIL
+       ========================================================= */
+    const listView = document.getElementById("list-view");
+    const detailView = document.getElementById("detail-view");
+    const detailHeading = document.getElementById("detail-heading");
+    const detailBadges = document.getElementById("detail-badges");
+    const detailFields = document.getElementById("detail-fields");
+    const historyList = document.getElementById("history-list");
+    const updateForm = document.getElementById("update-form");
+    const statusSelect = document.getElementById("status-select");
+    const prioritySelect = document.getElementById("priority-select");
+    const noteInput = document.getElementById("note");
+    const noteError = document.getElementById("note-error");
+    const updateErrors = document.getElementById("update-errors");
+    const updateFields = [{ input: noteInput, errorEl: noteError }];
+
+    /* ---------- Progress stepper: New -> In Progress -> Completed ---------- */
+    const stepper = document.getElementById("stepper");
+    const STEP_LABELS = ["New", "In Progress", "Completed"];
+
+    /* ---------- Coloured info tiles on the ticket page ---------- */
+    const detailPanel = document.getElementById("detail-panel");
+
+    // Adds one label/value pair inside its own tile. <div> groups inside a
+    // <dl> are valid HTML, so screen readers still hear "label: value".
+    function addInfo(label, value, tone, opts) {
+      opts = opts || {};
+      const group = el("div", "info-item tone-" + tone + (opts.wide ? " wide" : ""));
+      group.appendChild(el("dt", "", label));
+      const dd = opts.node || el("dd", opts.userText ? "user-text" : "", value);
+      group.appendChild(dd);
+      detailFields.appendChild(group);
+    }
+
+    function renderStepper(job) {
+      stepper.textContent = "";
+      const current = STATUSES.indexOf(job.status);
+      STATUSES.forEach(function (status, i) {
+        const finished = i < current || (i === current && status === "Completed");
+        // "s0/s1/s2" lets each step have its own colour (blue, amber, green)
+        const li = el("li", "s" + i + " " + (finished ? "done" : (i === current ? "current" : "")));
+        li.appendChild(document.createTextNode(STEP_LABELS[i]));
+        // The state is written in words, so it never relies on colour alone
+        li.appendChild(el("span", "step-state",
+          i === current ? (finished ? "Done (current)" : "Current step") : (finished ? "Done" : "Not started")));
+        if (i === current) li.setAttribute("aria-current", "step");
+        stepper.appendChild(li);
+      });
+    }
+
+    /* ---------- Get help rendering (all text via textContent) ---------- */
+    function tradeNames(job) {
+      return suggestedTrades(job.description).map(function (t) { return t.name; }).join(", ");
+    }
+
+    function callLink(phone, label) {
+      const a = el("a", "call-link", label);
+      a.href = "tel:" + phone.replace(/\s/g, "");
+      return a;
+    }
+
+    // One card for a trade: its contractors with call buttons, plus a map search.
+    // job is optional: when given (on a job page), each contractor gets a
+    // "Book" button. The directory on the main screen passes no job.
+    function tradeBlock(trade, headingTag, postcode, job) {
+      const box = el("div", "trade");
+      box.appendChild(el(headingTag || "h3", "", trade.name));
+      box.appendChild(el("p", "hint", "For " + trade.examples + "."));
+
+      const ul = el("ul", "contractors");
+      trade.contractors.forEach(function (c) {
+        const li = el("li", "contractor");
+        const info = el("div");
+        info.appendChild(el("p", "contractor-name", c.name));
+        info.appendChild(el("p", "contractor-note", c.note));
+        li.appendChild(info);
+        const actions = el("div", "contractor-actions");
+        actions.appendChild(callLink(c.phone, "Call " + c.phone));
+        if (job && job.status !== "Completed") {
+          if (job.contractor && job.contractor.name === c.name) {
+            actions.appendChild(el("span", "booked", "✓ Booked"));
+          } else {
+            // Visible text "Book" + hidden contractor name, so screen readers
+            // can tell the many Book buttons apart.
+            const btn = el("button", "secondary book-btn", "Book");
+            btn.type = "button";
+            btn.appendChild(el("span", "visually-hidden", " " + c.name));
+            btn.addEventListener("click", function () { bookContractor(job.id, trade, c); });
+            actions.appendChild(btn);
+          }
+        }
+        li.appendChild(actions);
+        ul.appendChild(li);
+      });
+      box.appendChild(ul);
+
+      // Search near the postcode if we have one, otherwise "near me"
+      const where = postcode ? "near " + postcode : "near you";
+      const query = trade.name + " " + (postcode ? "near " + postcode : "near me");
+      const search = el("a", "search-link",
+        "Find " + (/^[aeiou]/i.test(trade.name) ? "an " : "a ") + trade.name.toLowerCase() + " " + where +
+        " (opens Google Maps in a new tab)");
+      search.href = "https://www.google.com/maps/search/" + encodeURIComponent(query);
+      search.target = "_blank";
+      search.rel = "noopener noreferrer";
+      box.appendChild(search);
+      return box;
+    }
+
+    const helpContent = document.getElementById("help-content");
+
+    function renderHelp(job) {
+      helpContent.textContent = "";
+
+      // 1. Emergency advice first, if the description mentions a danger
+      emergenciesFor(job.description).forEach(function (e) {
+        const box = el("div", "emergency");
+        box.appendChild(el("p", "emergency-title", "Safety: " + e.title));
+        box.appendChild(el("p", "", e.text));
+        if (e.phone) box.appendChild(callLink(e.phone, "Call " + e.phone));
+        helpContent.appendChild(box);
+      });
+
+      // 2. Trades matched to this fault
+      const suggested = suggestedTrades(job.description);
+      const postcode = job.postcode || savedPostcode();
+      suggested.forEach(function (t) { helpContent.appendChild(tradeBlock(t, "h3", postcode, job)); });
+
+      // 3. Every other trade, tucked away
+      const others = TRADES.concat([GENERAL_TRADE]).filter(function (t) {
+        return suggested.indexOf(t) === -1;
+      });
+      const more = el("details");
+      more.appendChild(el("summary", "", "Need a different trade?"));
+      others.forEach(function (t) { more.appendChild(tradeBlock(t, "h4", postcode, job)); });
+      helpContent.appendChild(more);
+    }
+
+    // Records a booking on the job. Same safe pattern as every other update:
+    // build a copy, append to history (never edit it), save, then show.
+    function bookContractor(jobId, trade, contractor) {
+      clearAnnouncement();
+      const job = findJob(jobId);
+      if (!job || job.status === "Completed") return;
+      const changed = !!job.contractor;
+      const entry = {
+        at: new Date().toISOString(),
+        status: job.status,
+        note: "",
+        booking: (changed ? "Contractor changed to " : "Contractor booked: ") +
+                 contractor.name + " (" + trade.name + ", " + contractor.phone + ")"
+      };
+      const updatedJob = Object.assign({}, job, {
+        contractor: { name: contractor.name, phone: contractor.phone, trade: trade.name },
+        history: job.history.concat([entry])
+      });
+      const updated = jobs.map(function (j) { return j.id === job.id ? updatedJob : j; });
+      if (!saveJobs(updated)) {
+        showErrors(updateErrors, [{ message: MSG.saveFailed }]);
+        return;
+      }
+      jobs = updated;
+      renderDetail(updatedJob);
+      const result = document.getElementById("help-result");
+      announce(contractor.name + " booked for job " + updatedJob.id + ". Call " + contractor.phone +
+        " to arrange a time.", result);
+      result.focus(); // the Book button has gone, so move focus to the result
+    }
+
+    // Full directory on the main screen (built once, it never changes)
+    function renderDirectory() {
+      const dir = document.getElementById("directory");
+      dir.textContent = "";
+      const postcode = savedPostcode();
+      TRADES.concat([GENERAL_TRADE]).forEach(function (t) { dir.appendChild(tradeBlock(t, "h3", postcode)); });
+    }
+
+    function openJob(id) {
+      // The job ID goes in the URL so a refresh keeps the same ticket open
+      location.hash = "job/" + id;
+    }
+
+    function renderDetail(job) {
+      renderQueueBar();
+      const info = queueInfo(job);
+
+      detailHeading.textContent = "Job " + job.id;
+
+      detailBadges.textContent = "";
+      detailBadges.appendChild(priorityBadge(job.priority));
+      detailBadges.appendChild(statusBadge(job.status));
+      detailBadges.appendChild(overdueBadge(job));
+      renderStepper(job);
+
+      // Coloured top edge of the ticket card follows the status
+      const statusTone = job.status === "Completed" ? "done" : job.status === "In Progress" ? "progress" : "new";
+      detailPanel.className = "panel ticket-panel tone-top-" + statusTone;
+
+      // Details as small coloured tiles, grouped by colour:
+      // blue = queue/status, purple = location, green = contact,
+      // amber = time, red = urgent, grey = everything else.
+      detailFields.textContent = "";
+      addInfo("Description", job.description, "grey", { userText: true, wide: true });
+      addInfo("Status", job.status, statusTone === "new" ? "blue" : statusTone === "progress" ? "amber" : "green");
+      addInfo("Queue", info.place + " (" + info.detail + ")", "blue");
+      if (job.status === "New") addInfo("Estimated start", estimateText(job).replace(/^Estimated start: /, ""), "blue");
+      addInfo("Priority", job.priority, job.priority === "Urgent" ? "red" : "grey");
+      addInfo("Job ID", job.id, "grey");
+      addInfo("Home", job.home, "purple", { userText: true });
+      if (job.room) addInfo("Room", job.room, "purple");
+      if (job.postcode) addInfo("Postcode", job.postcode, "purple");
+      addInfo("Reporter", job.reporter, "green", { userText: true });
+      if (job.phone) {
+        addInfo("Contact phone", job.phone +
+          (job.status === "Completed" ? "" : " (expect a call soon)"), "green", { userText: true });
+      }
+      addInfo("Reported", formatDateTime(job.createdAt), "amber");
+      addInfo("Time", "", "amber", { node: elapsedEl("dd", job) });
+      addInfo("Suggested help", tradeNames(job), "blue");
+      addInfo("Booked contractor", job.contractor ?
+        job.contractor.name + " (" + job.contractor.trade + ", " + job.contractor.phone + ")" : "None booked yet", "green");
+      addInfo("Latest note", latestNote(job) || "No notes yet", "grey", { userText: true, wide: true });
+
+      renderHelp(job);
+
+      // Full history, oldest first. Earlier entries are never edited or removed.
+      historyList.textContent = "";
+      job.history.forEach(function (entry) {
+        // Each history dot is coloured by the status at that time
+        const li = el("li", entry.status === "Completed" ? "h-done" :
+                            entry.status === "In Progress" ? "h-progress" : "h-new");
+        li.appendChild(el("p", "history-meta", formatDateTime(entry.at) + " - Status: " + entry.status));
+        if (entry.priorityChange) {
+          li.appendChild(el("p", "history-priority", "Priority changed from " + entry.priorityChange));
+        }
+        if (entry.booking) li.appendChild(el("p", "history-booking", entry.booking));
+        if (entry.note || (!entry.booking && !entry.priorityChange)) {
+          li.appendChild(el("p", "user-text", entry.note ? "Note: " + entry.note : "No note"));
+        }
+        historyList.appendChild(li);
+      });
+
+      statusSelect.value = job.status;
+      prioritySelect.value = job.priority;
+    }
+
+    function showList() {
+      currentJobId = null;
+      detailView.hidden = true;
+      listView.hidden = false;
+      renderList();
+    }
+
+    function showDetail(job) {
+      currentJobId = job.id;
+      listView.hidden = true;
+      detailView.hidden = false;
+      noteInput.value = "";
+      clearErrors(updateErrors, updateFields);
+      renderDetail(job);
+      detailHeading.focus();
+    }
+
+    // Opens the browser's print dialog; the @media print styles turn the
+    // job page into a clean one-page sheet (also "Save as PDF").
+    document.getElementById("print-button").addEventListener("click", function () {
+      window.print();
+    });
+
+    document.getElementById("back-button").addEventListener("click", function () {
+      clearAnnouncement();
+      location.hash = "";
+    });
+
+    /* =========================================================
+       UPDATE A TICKET
+       ========================================================= */
+    updateForm.addEventListener("submit", function (event) {
+      event.preventDefault();
+      clearAnnouncement();
+      clearErrors(updateErrors, updateFields);
+
+      const job = findJob(currentJobId);
+      if (!job) { showList(); return; }
+
+      const newStatus = statusSelect.value;
+      const newPriority = prioritySelect.value;
+      const note = noteInput.value.trim();
+      if (!STATUSES.includes(newStatus) || !PRIORITIES.includes(newPriority)) return;
+      const priorityChanged = newPriority !== job.priority;
+
+      // 1. VALIDATE BEFORE TOUCHING ANY DATA.
+      //    A rejected update leaves the saved job exactly as it was.
+      if (newStatus === "Completed" && note === "") {
+        showErrors(updateErrors, [{ input: noteInput, errorEl: noteError, message: MSG.completionNoteMissing }]);
+        return;
+      }
+      if (newStatus === job.status && note === "" && !priorityChanged) {
+        showErrors(updateErrors, [{ input: noteInput, errorEl: noteError, message: MSG.nothingToSave }]);
+        return;
+      }
+
+      // 2. Build an updated COPY of this one job (history is append-only).
+      //    A priority change is written into the history entry too, so the
+      //    record shows when and how the priority changed.
+      const entry = { at: new Date().toISOString(), status: newStatus, note: note };
+      if (priorityChanged) entry.priorityChange = job.priority + " to " + newPriority;
+      const updatedJob = Object.assign({}, job, {
+        status: newStatus,
+        priority: newPriority,
+        history: job.history.concat([entry])
+      });
+
+      // 3. Replace only this job; every other job stays exactly the same
+      const updated = jobs.map(function (j) { return j.id === job.id ? updatedJob : j; });
+      if (!saveJobs(updated)) {
+        showErrors(updateErrors, [{ message: MSG.saveFailed }]);
+        return;
+      }
+      jobs = updated;
+
+      // 4. Show the result
+      noteInput.value = "";
+      renderDetail(updatedJob);
+      announce("Update saved for job " + updatedJob.id + ". Status is now " + updatedJob.status + "." +
+        (priorityChanged ? " Priority is now " + updatedJob.priority + " (" + queueInfo(updatedJob).place.toLowerCase() + ")." : "") +
+        (entry.note ? " Note: " + entry.note : ""),
+        document.getElementById("update-result"));
+    });
+
+    /* =========================================================
+       ROUTING (list view or one ticket, kept in the URL hash)
+       ========================================================= */
+    function route() {
+      const match = location.hash.match(/^#job\/(MH-\d+)$/);
+      const job = match ? findJob(match[1]) : null;
+      if (job) showDetail(job); else showList();
+    }
+
+    window.addEventListener("hashchange", route);
+
+    // If the app is open in two tabs, keep them in sync
+    window.addEventListener("storage", function (event) {
+      if (event.key === JOBS_KEY) {
+        jobs = loadJobs();
+        route();
+      }
+    });
+
+    /* =========================================================
+       DARK MODE TOGGLE
+       ========================================================= */
+    const themeToggle = document.getElementById("theme-toggle");
+
+    function updateThemeButton() {
+      const dark = document.documentElement.getAttribute("data-theme") === "dark";
+      themeToggle.textContent = dark ? "Switch to light mode" : "Switch to dark mode";
+    }
+
+    themeToggle.addEventListener("click", function () {
+      const next = document.documentElement.getAttribute("data-theme") === "dark" ? "light" : "dark";
+      document.documentElement.setAttribute("data-theme", next);
+      try { localStorage.setItem("mh_theme", next); } catch (err) { /* ignore */ }
+      updateThemeButton();
+    });
+    updateThemeButton();
+
+    /* =========================================================
+       REPORT A FAULT BUTTON (header): goes straight to the form
+       and puts the cursor in the description box.
+       ========================================================= */
+    document.getElementById("report-jump").addEventListener("click", function () {
+      function go() {
+        document.getElementById("report-heading").scrollIntoView({ behavior: "smooth", block: "start" });
+        descriptionInput.focus({ preventScroll: true });
+      }
+      if (!detailView.hidden) {
+        location.hash = "";
+        setTimeout(go, 60);   // wait for the list view to come back
+      } else {
+        go();
+      }
+    });
+
+    /* =========================================================
+       FIND HELP BUTTON (header)
+       On the main screen: opens the directory and moves focus to it.
+       On a job page: jumps to that job's own "Get help" panel.
+       ========================================================= */
+    document.getElementById("find-help-button").addEventListener("click", function () {
+      if (!detailView.hidden) {
+        const heading = document.getElementById("help-heading");
+        heading.setAttribute("tabindex", "-1");
+        heading.scrollIntoView({ behavior: "smooth", block: "start" });
+        heading.focus({ preventScroll: true });
+        return;
+      }
+      const panel = document.getElementById("find-help");
+      panel.open = true;
+      panel.scrollIntoView({ behavior: "smooth", block: "start" });
+      panel.querySelector("summary").focus({ preventScroll: true });
+    });
+
+    /* =========================================================
+       SKIP LINK (moves keyboard focus without changing the URL hash,
+       so it never closes an open ticket)
+       ========================================================= */
+    document.getElementById("skip-link").addEventListener("click", function (event) {
+      event.preventDefault();
+      document.getElementById("main").focus();
+    });
+
+    /* =========================================================
+       CLEAR ALL DATA (for resetting between demo runs)
+       ========================================================= */
+    document.getElementById("clear-data").addEventListener("click", function () {
+      const ok = window.confirm("Delete ALL repair jobs and their history? This cannot be undone.");
+      if (!ok) return;
+      try {
+        localStorage.removeItem(JOBS_KEY);
+        localStorage.removeItem(COUNTER_KEY);
+        localStorage.removeItem(POSTCODE_KEY);
+      } catch (err) { /* ignore */ }
+      postcodeInput.value = "";
+      renderDirectory();
+      jobs = [];
+      resetFilters();
+      if (location.hash) location.hash = ""; else route();
+      announce("All jobs were deleted. The app is back to an empty state.");
+    });
+
+    renderDirectory();
+    buildRoomPicker();
+    route();
+  </script>
+</body>
+</html>
